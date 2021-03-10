@@ -5,4 +5,5 @@ vdso_test_clock_getres
 vdso_test_correctness
 vdso_test_gettimeofday
 vdso_test_getcpu
+vdso_test_echo
 vdso_standalone_test_x86

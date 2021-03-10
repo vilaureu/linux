@@ -28,6 +28,8 @@ VERSION {
 		clock_getres;
 		__vdso_clock_getres;
 		__vdso_sgx_enter_enclave;
+		echo;
+		__vdso_echo;
 	local: *;
 	};
 }

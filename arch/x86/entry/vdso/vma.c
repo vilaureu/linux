@@ -442,6 +442,9 @@ static __init int vdso_setup(char *s)
 }
 __setup("vdso=", vdso_setup);
 
+/* vvar for echo offset */
+long _vdso_echo_off __attribute__((section(".vvar__vdso_echo_off"), aligned(16))) __visible;
+
 static int __init init_vdso(void)
 {
 	BUILD_BUG_ON(VDSO_CLOCKMODE_MAX >= 32);
@@ -451,6 +454,9 @@ static int __init init_vdso(void)
 #ifdef CONFIG_X86_X32_ABI
 	init_vdso_image(&vdso_image_x32);
 #endif
+
+	/* initialize echo offset vvar */
+	_vdso_echo_off = 42;
 
 	return 0;
 }

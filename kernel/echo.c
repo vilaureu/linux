@@ -6,5 +6,5 @@
 
 SYSCALL_DEFINE1(echo, long, msg)
 {
-	return msg;
+	return msg + 42;
 }

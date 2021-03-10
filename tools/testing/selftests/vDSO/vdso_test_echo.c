@@ -13,6 +13,7 @@
 #include "parse_vdso.h"
 
 #define MSG ((long) 0x1337)
+#define EXPECTED (MSG + 42)
 
 const char *version = "LINUX_2.6";
 const char *name = "__vdso_echo";
@@ -41,8 +42,8 @@ int main(int argc, char **argv)
 	}
 
   ret = echo(MSG);
-	if (MSG != ret) {
-		printf("Expected %ld found %ld\n", MSG, ret);
+	if (EXPECTED != ret) {
+		printf("Expected %ld found %ld\n", EXPECTED, ret);
 		return KSFT_FAIL;
   }
 

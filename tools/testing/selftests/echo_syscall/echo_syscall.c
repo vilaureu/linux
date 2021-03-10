@@ -5,7 +5,7 @@
 
 TEST(echo_syscall_test)
 {
-	ASSERT_EQ(syscall(442, MSG), MSG);
+	ASSERT_EQ(MSG, syscall(442, MSG));
 }
 
 TEST_HARNESS_MAIN

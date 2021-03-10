@@ -9,6 +9,7 @@ TARGETS += core
 TARGETS += cpufreq
 TARGETS += cpu-hotplug
 TARGETS += drivers/dma-buf
+TARGETS += echo
 TARGETS += efivarfs
 TARGETS += exec
 TARGETS += filesystems

@@ -15,6 +15,7 @@
 #include <linux/cpu.h>
 #include <linux/ptrace.h>
 #include <linux/time_namespace.h>
+#include <vdso/echo.h>
 
 #include <asm/pvclock.h>
 #include <asm/vgtod.h>
@@ -442,9 +443,6 @@ static __init int vdso_setup(char *s)
 }
 __setup("vdso=", vdso_setup);
 
-/* vvar for echo offset */
-long _vdso_echo_off __attribute__((section(".vvar__vdso_echo_off"), aligned(16))) __visible;
-
 static int __init init_vdso(void)
 {
 	BUILD_BUG_ON(VDSO_CLOCKMODE_MAX >= 32);
@@ -456,7 +454,7 @@ static int __init init_vdso(void)
 #endif
 
 	/* initialize echo offset vvar */
-	_vdso_echo_off = 42;
+	_vdso_echo_off = 0;
 
 	return 0;
 }

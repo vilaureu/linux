@@ -864,9 +864,11 @@ __SC_COMP(__NR_epoll_pwait2, sys_epoll_pwait2, compat_sys_epoll_pwait2)
 
 #define __NR_echo 442
 __SYSCALL(__NR_echo, sys_echo)
+#define __NR_echo_offset 443
+__SYSCALL(__NR_echo_offset, sys_echo_offset)
 
 #undef __NR_syscalls
-#define __NR_syscalls 443
+#define __NR_syscalls 444
 
 /*
  * 32 bit systems traditionally used different

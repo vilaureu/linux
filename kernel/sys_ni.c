@@ -191,6 +191,7 @@ COND_SYSCALL(getgroups);
 
 /* kernel/echo.c */
 COND_SYSCALL(echo);
+COND_SYSCALL(echo_offset);
 
 /* ipc/mqueue.c */
 COND_SYSCALL(mq_open);

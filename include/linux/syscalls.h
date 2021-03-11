@@ -785,6 +785,7 @@ asmlinkage long sys_sysinfo(struct sysinfo __user *info);
 
 /* kernel/echo.c */
 asmlinkage long sys_echo(long msg);
+asmlinkage long sys_echo_offset(long off);
 
 /* ipc/mqueue.c */
 asmlinkage long sys_mq_open(const char __user *name, int oflag, umode_t mode, struct mq_attr __user *attr);

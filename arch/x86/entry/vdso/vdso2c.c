@@ -76,6 +76,7 @@ enum {
 	sym_pvclock_page,
 	sym_hvclock_page,
 	sym_timens_page,
+	sym_vvar_echo_page,
 };
 
 const int special_pages[] = {
@@ -83,6 +84,7 @@ const int special_pages[] = {
 	sym_pvclock_page,
 	sym_hvclock_page,
 	sym_timens_page,
+	sym_vvar_echo_page,
 };
 
 struct vdso_sym {
@@ -96,6 +98,7 @@ struct vdso_sym required_syms[] = {
 	[sym_pvclock_page] = {"pvclock_page", true},
 	[sym_hvclock_page] = {"hvclock_page", true},
 	[sym_timens_page] = {"timens_page", true},
+	[sym_vvar_echo_page] = {"vvar_echo_page", true},
 	{"VDSO32_NOTE_MASK", true},
 	{"__kernel_vsyscall", true},
 	{"__kernel_sigreturn", true},

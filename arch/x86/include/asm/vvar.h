@@ -30,6 +30,7 @@
 #else
 
 extern char __vvar_page;
+extern char __vvar_echo_page;
 
 #define DECLARE_VVAR(offset, type, name)				\
 	extern type vvar_ ## name[CS_BASES]				\

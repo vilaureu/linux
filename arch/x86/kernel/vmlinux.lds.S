@@ -200,9 +200,6 @@ SECTIONS
 #include <asm/vvar.h>
 #undef EMIT_VVAR
 
-		. = __vvar_beginning_hack + 1024;
-		*(.vvar__vdso_echo_off)
-
 		/*
 		 * Pad the rest of the page with zeros.  Otherwise the loader
 		 * can leave garbage here.
@@ -211,6 +208,23 @@ SECTIONS
 	} :data
 
 	. = ALIGN(__vvar_page + PAGE_SIZE, PAGE_SIZE);
+
+	/*
+	 * Page for the echo offset. Similar to the vvar_page above
+	 */
+	. = ALIGN(PAGE_SIZE);
+	__vvar_echo_page = .;
+
+	.vvar_echo : AT(ADDR(.vvar_echo) - LOAD_OFFSET) {
+		__vvar_beginning_hack = .;
+
+		. = __vvar_beginning_hack;
+		*(.vvar__vdso_echo_off)
+
+		. = __vvar_beginning_hack + PAGE_SIZE;
+	} :data
+
+	. = ALIGN(__vvar_echo_page + PAGE_SIZE, PAGE_SIZE);
 
 	/* Init code and data - will be freed after init */
 	. = ALIGN(PAGE_SIZE);

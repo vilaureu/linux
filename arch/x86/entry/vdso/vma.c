@@ -224,6 +224,9 @@ static vm_fault_t vvar_fault(const struct vm_special_mapping *sm,
 
 		pfn = __pa_symbol(&__vvar_page) >> PAGE_SHIFT;
 		return vmf_insert_pfn(vma, vmf->address, pfn);
+	} else if (sym_offset == image->sym_vvar_echo_page) {
+		pfn = __pa_symbol(&__vvar_echo_page) >> PAGE_SHIFT;
+		return vmf_insert_pfn(vma, vmf->address, pfn);
 	}
 
 	return VM_FAULT_SIGBUS;

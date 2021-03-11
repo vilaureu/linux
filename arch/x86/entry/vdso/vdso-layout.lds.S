@@ -16,15 +16,13 @@ SECTIONS
 	 * segment.
 	 */
 
-	vvar_start = . - 4 * PAGE_SIZE;
+	vvar_start = . - 5 * PAGE_SIZE;
 	vvar_page  = vvar_start;
 
 	/* Place all vvars at the offsets in asm/vvar.h. */
 #define EMIT_VVAR(name, offset) vvar_ ## name = vvar_page + offset;
 #include <asm/vvar.h>
 #undef EMIT_VVAR
-
-	vvar__vdso_echo_off = vvar_page + 1024;
 
 	pvclock_page = vvar_start + PAGE_SIZE;
 	hvclock_page = vvar_start + 2 * PAGE_SIZE;
@@ -35,6 +33,10 @@ SECTIONS
 #define EMIT_VVAR(name, offset) timens_ ## name = timens_page + offset;
 #include <asm/vvar.h>
 #undef EMIT_VVAR
+
+	/* Echo offset page with vdso_echo_off directly at the beginning of the page */
+	vvar_echo_page = vvar_start + 4 * PAGE_SIZE;
+	vvar__vdso_echo_off = vvar_echo_page;
 
 	. = SIZEOF_HEADERS;
 

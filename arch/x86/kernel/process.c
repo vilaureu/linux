@@ -43,6 +43,8 @@
 #include <asm/io_bitmap.h>
 #include <asm/proto.h>
 #include <asm/frame.h>
+#include <asm/vdso.h>
+#include <asm/fastcall.h>
 
 #include "process.h"
 
@@ -981,4 +983,13 @@ long do_arch_prctl_common(struct task_struct *task, int option,
 	}
 
 	return -EINVAL;
+}
+
+int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp) {
+	int retval = 0;
+	retval = setup_vdso_pages();
+	if (retval < 0)
+		return retval;
+	
+	return setup_fastcall_page();
 }

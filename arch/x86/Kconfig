@@ -757,6 +757,15 @@ config SCHED_OMIT_FRAME_POINTER
 
 	  If in doubt, say "Y".
 
+config FASTCALL
+	bool "Enable the fastcall mechanism"
+	depends on X86_64
+	help
+	  A new system call is provided which is used to execute fastcalls.
+		These fastcalls can be registered in the kernel and 
+		only provide a minimal kernel interface when executed.
+		In exchange they minimize system call latency.
+
 menuconfig HYPERVISOR_GUEST
 	bool "Linux guest support"
 	help

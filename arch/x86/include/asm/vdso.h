@@ -52,6 +52,8 @@ extern int map_vdso_once(const struct vdso_image *image, unsigned long addr);
 extern bool fixup_vdso_exception(struct pt_regs *regs, int trapnr,
 				 unsigned long error_code,
 				 unsigned long fault_addr);
+
+extern int setup_vdso_pages(void);
 #endif /* __ASSEMBLER__ */
 
 #endif /* _ASM_X86_VDSO_H */

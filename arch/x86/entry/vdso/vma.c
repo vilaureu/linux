@@ -386,7 +386,7 @@ static int load_vdso32(void)
 #endif
 
 #ifdef CONFIG_X86_64
-int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
+int setup_vdso_pages(void)
 {
 	if (!vdso64_enabled)
 		return 0;
@@ -413,7 +413,7 @@ int compat_arch_setup_additional_pages(struct linux_binprm *bprm,
 }
 #endif
 #else
-int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
+int setup_vdso_pages(void)
 {
 	return load_vdso32();
 }

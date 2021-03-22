@@ -40,6 +40,7 @@
 #include <asm/nospec-branch.h>
 #include <asm/fsgsbase.h>
 #include <linux/err.h>
+#include <asm/fastcall.h>
 
 #include "calling.h"
 
@@ -94,6 +95,11 @@ SYM_CODE_END(native_usergs_sysret64)
 
 SYM_CODE_START(entry_SYSCALL_64)
 	UNWIND_HINT_EMPTY
+
+#ifdef CONFIG_FASTCALL
+	cmpq $NR_fastcall, %rax
+	je fastcall
+#endif
 
 	swapgs
 	/* tss.sp2 is scratch space. */
@@ -720,6 +726,22 @@ native_irq_return_ldt:
 #endif
 SYM_CODE_END(common_interrupt_return)
 _ASM_NOKPROBE(common_interrupt_return)
+
+/*
+ * Call the desired fastcall function using the fastcall table.
+ * 
+ * The registers are used in the following way:
+ * %rax    return value
+ * TODO document further
+ */
+#ifdef CONFIG_FASTCALL
+SYM_CODE_START_LOCAL(fastcall)
+	ASM_STAC // disable SMAP temporarily
+	movq (FASTCALL_ADDR), %rax
+	ASM_CLAC
+	sysretq
+SYM_CODE_END(fastcall)
+#endif /* CONFIG_FASTCALL */
 
 /*
  * Reload gs selector with exception handling

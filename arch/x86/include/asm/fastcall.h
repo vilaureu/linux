@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 #ifndef _ASM_X86_FASTCALL_H
 #define _ASM_X86_FASTCALL_H
+
+#define NR_fastcall 442
+
+/* FASTCALL_ADDR - address of the fastcall jump table in user space */
+#define FASTCALL_ADDR 0x7fff00000000 // TODO: eliminate magic number
+
 #ifndef __ASSEMBLER__
 
 #ifdef CONFIG_FASTCALL

@@ -189,6 +189,9 @@ COND_SYSCALL(getgroups);
 
 /* kernel/timer.c */
 
+/* fastcall/fastcall.c */
+COND_SYSCALL(fastcall);
+
 /* ipc/mqueue.c */
 COND_SYSCALL(mq_open);
 COND_SYSCALL_COMPAT(mq_open);

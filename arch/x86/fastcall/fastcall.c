@@ -9,9 +9,7 @@
 #include <linux/mmap_lock.h>
 #include <linux/mm.h>
 #include <linux/init.h>
-
-/* FASTCALL_ADDR - address of the fastcall jump table in user space */
-#define FASTCALL_ADDR 0x7fff00000000 // TODO: eliminate magic number
+#include <asm/fastcall.h>
 
 static const struct vm_special_mapping fastcall_mapping = {
 	.name = "[fastcall]",

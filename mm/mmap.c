@@ -2835,6 +2835,14 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	if (vma->vm_start >= end)
 		return 0;
 
+	/* check if munmap is allowed for this vma */
+	if (vma->vm_ops && vma->vm_ops->may_unmap) {
+		int error = vma->vm_ops->may_unmap(vma);
+
+		if (error)
+			return error;
+	}
+
 	/*
 	 * If we need to split any vma, do it now to save pain later.
 	 *
@@ -3400,6 +3408,19 @@ static void special_mapping_close(struct vm_area_struct *vma)
 {
 }
 
+/*
+ * Check if this special mapping is allowed to be unmapped.
+ */
+static int special_mapping_may_unmap(struct vm_area_struct *vma)
+{
+	struct vm_special_mapping *sm = vma->vm_private_data;
+	
+	if (sm->may_unmap)
+		return sm->may_unmap(sm, vma);
+	
+	return 0;
+}
+
 static const char *special_mapping_name(struct vm_area_struct *vma)
 {
 	return ((struct vm_special_mapping *)vma->vm_private_data)->name;
@@ -3435,6 +3456,7 @@ static int special_mapping_split(struct vm_area_struct *vma, unsigned long addr)
 
 static const struct vm_operations_struct special_mapping_vmops = {
 	.close = special_mapping_close,
+	.may_unmap = special_mapping_may_unmap,
 	.fault = special_mapping_fault,
 	.mremap = special_mapping_mremap,
 	.name = special_mapping_name,

@@ -772,6 +772,13 @@ struct vm_special_mapping {
 
 	int (*mremap)(const struct vm_special_mapping *sm,
 		     struct vm_area_struct *new_vma);
+	
+	/*
+	 * If the error code returned is not 0, 
+	 * the mapping will not be unmapped.
+	 */
+	int (*may_unmap)(const struct vm_special_mapping *sm,
+				struct vm_area_struct *area);
 };
 
 enum tlb_flush_reason {

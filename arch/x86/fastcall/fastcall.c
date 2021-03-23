@@ -11,12 +11,32 @@
 #include <linux/init.h>
 #include <asm/fastcall.h>
 
-static const struct vm_special_mapping fastcall_mapping = {
-	.name = "[fastcall]",
-};
-
 /* default_jump_table - fastcall jump table mapped on process creation */
 static struct page *default_jump_table;
+
+/*
+ * fastcall_mremap - prohibit any remapping of the fastcall table
+ */
+static int fastcall_mremap(const struct vm_special_mapping *sm,
+			   struct vm_area_struct *new_vma)
+{
+	return -EINVAL;
+}
+
+/*
+ * fastcall_may_unmap - prohibit unmapping the fastcall table
+ */
+static int fastcall_may_unmap(const struct vm_special_mapping *sm,
+			      struct vm_area_struct *vma)
+{
+	return -EACCES;
+}
+
+static const struct vm_special_mapping fastcall_mapping = {
+	.name = "[fastcall]",
+	.mremap = fastcall_mremap,
+	.may_unmap = fastcall_may_unmap,
+};
 
 /*
  * setup_fastcall_page - insert a page with fastcall function pointers into user space

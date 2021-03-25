@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
 #define _GNU_SOURCE
 
-#include <unistd.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include "../kselftest_harness.h"
+#include "fastcall.h"
 
-#define NR_FASTCALL 442
-#define FASTCALL_ADDR ((char *)0x7fff00000000)
 #define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
 
 /*

@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
+#include <asm/fastcall.h>
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION(
@@ -32,13 +33,16 @@ static int fce_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/*
+ * fce_ioctl() - register the example fastcall specified by cmd
+ */
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -EINVAL;
 
 	switch (cmd) {
 	case 0:
-		break;
+		return register_fastcall(NULL);
 	}
 
 	return ret;

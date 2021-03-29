@@ -15,8 +15,11 @@
 
 #ifndef __ASSEMBLER__
 
+#include <linux/mm_types.h>
+
 #ifdef CONFIG_FASTCALL
 extern int setup_fastcall_page(void);
+extern int register_fastcall(struct page **);
 #else
 int setup_fastcall_page(void)
 {

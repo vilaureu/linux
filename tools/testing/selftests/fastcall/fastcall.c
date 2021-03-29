@@ -6,8 +6,6 @@
 #include "../kselftest_harness.h"
 #include "fastcall.h"
 
-#define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
-
 /*
  * Read the first byte of the fastcall table.
  */

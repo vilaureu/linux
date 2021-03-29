@@ -2,10 +2,16 @@
 #ifndef _ASM_X86_FASTCALL_H
 #define _ASM_X86_FASTCALL_H
 
+#include <asm/page_types.h>
+
 #define NR_fastcall 442
 
-/* FASTCALL_ADDR - address of the fastcall jump table in user space */
-#define FASTCALL_ADDR 0x7fff00000000 // TODO: eliminate magic number
+/* 
+ * FASTCALL_ADDR - address of the fastcall jump table in user space
+ *
+ * The per-CPU fastcall stacks go below this page.
+ */
+#define FASTCALL_ADDR (0x7fffffffffff & PAGE_MASK)
 
 #ifndef __ASSEMBLER__
 

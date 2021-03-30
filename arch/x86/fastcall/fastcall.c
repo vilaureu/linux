@@ -9,7 +9,13 @@
 #include <linux/mmap_lock.h>
 #include <linux/mm.h>
 #include <linux/init.h>
+#include <linux/highmem.h>
+#include <linux/mutex.h>
 #include <asm/fastcall.h>
+
+#define GFP_FASTCALL (GFP_HIGHUSER | __GFP_ZERO | __GFP_ACCOUNT)
+#define NR_ENTRIES                                                             \
+	((PAGE_SIZE - sizeof(struct mutex)) / sizeof(struct fastcall_entry))
 
 /*
  * fastcall_entry - a single entry of the fastcall table
@@ -20,6 +26,11 @@
 struct fastcall_entry {
 	void *fn_ptr;
 	long attribs[3];
+};
+
+struct fastcall_table {
+	struct fastcall_entry entries[NR_ENTRIES];
+	struct mutex mutex;
 };
 
 /*
@@ -53,6 +64,9 @@ static vm_fault_t fastcall_fault(const struct vm_special_mapping *sm,
 	return VM_FAULT_SIGBUS;
 }
 
+/*
+ * fastcall_mapping - mapping for the fastcall table and stack pages
+ */
 static const struct vm_special_mapping fastcall_mapping = {
 	.name = "[fastcall]",
 	.mremap = fastcall_mremap,
@@ -109,21 +123,22 @@ up_fail:
 }
 
 /*
- * map_fastcall_pages - creates and inserts a new fastcall table and new stacks
+ * create_fastcall_pages - creates and inserts a new fastcall table and new stacks
  *
  * TODO change if fastcall table not created here anymore
  */
 static struct page *create_fastcall_pages(struct vm_area_struct *vma,
-				       struct page *old)
+					  struct page *old)
 {
 	int err;
 	unsigned long start = FASTCALL_ADDR - nr_cpu_ids * PAGE_SIZE;
 	unsigned long addr;
 	struct page *page;
+	struct fastcall_table *table;
 
 	// The stack pages are not mapped yet.
 	for (addr = start; addr < FASTCALL_ADDR; addr += PAGE_SIZE) {
-		page = alloc_page(GFP_HIGHUSER | __GFP_ZERO);
+		page = alloc_page(GFP_FASTCALL);
 		if (!page) {
 			zap_page_range(vma, start, addr - start);
 			return ERR_PTR(-ENOMEM);
@@ -136,20 +151,25 @@ static struct page *create_fastcall_pages(struct vm_area_struct *vma,
 		}
 	}
 
-	page = alloc_page(GFP_HIGHUSER | __GFP_ZERO);
+	page = alloc_page(GFP_FASTCALL);
 	if (!page) {
 		zap_page_range(vma, start, nr_cpu_ids * PAGE_SIZE);
-			return ERR_PTR(-ENOMEM);
+		return ERR_PTR(-ENOMEM);
 	}
 
 	// TODO Here is a race condition currently in which a table access can fault
 	zap_page_range(vma, FASTCALL_ADDR, PAGE_SIZE);
 	err = vm_insert_page(vma, FASTCALL_ADDR, page);
-	__free_page(page);
 	if (err < 0) {
+		__free_page(page);
 		zap_page_range(vma, start, nr_cpu_ids * PAGE_SIZE);
 		return ERR_PTR(err);
 	}
+
+	table = kmap(page);
+	mutex_init(&table->mutex);
+	kunmap(page);
+	__free_page(page);
 
 	return page;
 }
@@ -163,10 +183,11 @@ static struct page *create_fastcall_pages(struct vm_area_struct *vma,
  */
 int register_fastcall(struct page **pages)
 {
-	int ret = -EFAULT;
+	int ret = 0;
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	struct page *page;
+	struct fastcall_table *table;
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
@@ -178,25 +199,44 @@ int register_fastcall(struct page **pages)
 
 		// Get the page with the fastcall table
 		page = follow_page(vma, FASTCALL_ADDR, 0);
-		if (WARN_ON(page == NULL))
-			goto up_fail;
+		if (WARN_ON(page == NULL)) {
+			ret = -EFAULT;
+			goto up_unlock;
+		}
 
 		if (WARN_ON(IS_ERR(page))) {
 			ret = PTR_ERR(page);
-			goto up_fail;
+			goto up_unlock;
 		}
 
 		if (page == ZERO_PAGE(0)) {
 			page = create_fastcall_pages(vma, page);
 			if (IS_ERR(page)) {
 				ret = PTR_ERR(page);
-				goto up_fail;
+				goto up_unlock;
 			}
 		}
 	}
 
-up_fail:
+up_unlock:
 	mmap_write_unlock(mm);
-	return ret;
+	if (ret < 0)
+		return ret;
+
+	get_page(page);
+
+	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
+	table = kmap(page);
+	if (mutex_lock_killable(&table->mutex)) {
+		ret = -EINTR;
+		goto fail_lock;
+	}
+
+fail_lock:
+	kunmap(page);
+	// Marking accessed or dirty is not needed because the pages are pinned all the time.
+	put_page(page);
+
+	return 0;
 }
 EXPORT_SYMBOL(register_fastcall);

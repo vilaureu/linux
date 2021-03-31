@@ -18,7 +18,8 @@
 #include <linux/mm_types.h>
 
 #ifdef CONFIG_FASTCALL
-typedef long fastcall_attr[3];
+#define NR_FC_ATTRIBS 3
+typedef long fastcall_attr[NR_FC_ATTRIBS];
 
 extern int setup_fastcall_page(void);
 extern int register_fastcall(struct page **, unsigned long, fastcall_attr);

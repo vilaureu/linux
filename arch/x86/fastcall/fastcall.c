@@ -12,6 +12,7 @@
 #include <linux/highmem.h>
 #include <linux/mutex.h>
 #include <asm/fastcall.h>
+#include <asm/barrier.h>
 
 #define GFP_FASTCALL (GFP_HIGHUSER | __GFP_ZERO | __GFP_ACCOUNT)
 #define NR_ENTRIES                                                             \
@@ -299,6 +300,7 @@ int register_fastcall(struct page **pages, unsigned long num,
 		      fastcall_attr attribs)
 {
 	int ret = 0;
+	size_t i;
 	struct mm_struct *mm = current->mm;
 	struct page *page;
 	struct fastcall_table *table;
@@ -324,13 +326,34 @@ int register_fastcall(struct page **pages, unsigned long num,
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
 	table = kmap(page);
 	if (mutex_lock_killable(&table->mutex)) {
-		unmap_function(fn_ptr);
 		ret = -EINTR;
 		goto fail_table_lock;
 	}
 
+	// Search a free table entry and insert the fn_ptr and attribs there
+	for (i = 0; i < NR_ENTRIES; i++) {
+		size_t j;
+		struct fastcall_entry *entry = &table->entries[i];
+
+		if (entry->fn_ptr)
+			continue;
+
+		for (j = 0; j < NR_FC_ATTRIBS; j++) {
+			entry->attribs[j] = attribs[j];
+		}
+		// Guarantee that a fastcall system call sees the attribs above when it reads this fn_ptr
+		smp_store_release(&entry->fn_ptr, (void *)fn_ptr);
+		ret = i;
+		break;
+	}
+
+	if (i == NR_ENTRIES)
+		ret = -EINVAL; // The fastcall table is full
+
 	mutex_unlock(&table->mutex);
 fail_table_lock:
+	if (ret < 0)
+		unmap_function(fn_ptr);
 	kunmap(page);
 	// Marking accessed or dirty is not needed because the pages are pinned all the time.
 fail_find_table:

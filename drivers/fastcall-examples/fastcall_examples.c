@@ -7,6 +7,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <asm/fastcall.h>
+#include <asm/pgtable.h>
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION(
@@ -39,10 +40,12 @@ static int fce_open(struct inode *inode, struct file *file)
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -EINVAL;
+	struct page *pages[] = { ZERO_PAGE(0) };
+	fastcall_attr attribs = { 0, 0, 0 };
 
 	switch (cmd) {
 	case 0:
-		return register_fastcall(NULL);
+		return register_fastcall(pages, 1, attribs);
 	}
 
 	return ret;

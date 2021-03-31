@@ -25,7 +25,7 @@
  */
 struct fastcall_entry {
 	void *fn_ptr;
-	long attribs[3];
+	fastcall_attr attribs;
 };
 
 struct fastcall_table {
@@ -71,6 +71,25 @@ static const struct vm_special_mapping fastcall_mapping = {
 	.name = "[fastcall]",
 	.mremap = fastcall_mremap,
 	.may_unmap = fastcall_may_unmap,
+	.fault = fastcall_fault,
+};
+
+/*
+ * function_mapping - mapping for the fastcall function code provided by the driver
+ */
+static const struct vm_special_mapping function_mapping = {
+	.name = "[fastcall_function]",
+	.mremap = fastcall_mremap,
+	.may_unmap = fastcall_may_unmap,
+	.fault = fastcall_fault,
+};
+
+/*
+ * unmappable_mapping - a temporary mapping that allows function pages to be unmapped
+ */
+static const struct vm_special_mapping unmappable_mapping = {
+	.name = "[fastcall_unmap]",
+	.mremap = fastcall_mremap,
 	.fault = fastcall_fault,
 };
 
@@ -175,68 +194,148 @@ static struct page *create_fastcall_pages(struct vm_area_struct *vma,
 }
 
 /*
- * register_fastcall - registers a new fastcall into the fastcall table
+ * find_fastcall_table - Find the page containing the fastcall of the process.
  *
- * This creates a new fastcall table and stack if needed.
- * Then the fastcall code is mapped to user space.
- * Finally, the function pointer is inserted into the fastcall table.
+ * The table is created if it was only the zero page previously.
+ * Therefor the mmap lock must be held writable.
  */
-int register_fastcall(struct page **pages)
+static struct page *find_fastcall_table(void)
 {
-	int ret = 0;
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
-	struct page *page;
-	struct fastcall_table *table;
-
-	if (mmap_write_lock_killable(mm))
-		return -EINTR;
+	struct page *page = NULL;
 
 	// Search for the fastcall mapping
+	// TODO maybe replace with pin get_user_pages
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (!vma_is_special_mapping(vma, &fastcall_mapping))
 			continue;
 
 		// Get the page with the fastcall table
 		page = follow_page(vma, FASTCALL_ADDR, 0);
-		if (WARN_ON(page == NULL)) {
-			ret = -EFAULT;
-			goto up_unlock;
-		}
+		if (WARN_ON(page == NULL))
+			return ERR_PTR(-EFAULT);
 
-		if (WARN_ON(IS_ERR(page))) {
-			ret = PTR_ERR(page);
-			goto up_unlock;
-		}
+		if (WARN_ON(IS_ERR(page)))
+			return page;
 
 		if (page == ZERO_PAGE(0)) {
-			page = create_fastcall_pages(vma, page);
-			if (IS_ERR(page)) {
-				ret = PTR_ERR(page);
-				goto up_unlock;
-			}
+			return create_fastcall_pages(vma, page);
 		}
+
+		return page;
 	}
 
-up_unlock:
-	mmap_write_unlock(mm);
-	if (ret < 0)
-		return ret;
+	WARN(true, "fastcall: no fastcall table found in process");
+	return ERR_PTR(-EFAULT);
+}
 
-	get_page(page);
+/*
+ * unmap_function - unmap fastcall function text pages at this address
+ */
+static void unmap_function(unsigned long fn_ptr)
+{
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma;
+
+	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		if (vma->vm_start == fn_ptr)
+			break;
+	}
+
+	if (WARN_ON(!vma))
+		return;
+
+	// Make do_munmap possible
+	vma->vm_private_data = (void *)&unmappable_mapping;
+	WARN_ON(do_munmap(mm, fn_ptr, vma->vm_end - vma->vm_start, NULL));
+}
+
+/*
+ * install_function_mapping - create and populate a mapping for the function text pages
+ *
+ * Return the pointer to the first address of the area.
+ */
+static unsigned long install_function_mapping(struct page **pages,
+					      unsigned long num)
+{
+	unsigned long fn_ptr;
+	int err;
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma;
+	unsigned long len = num * PAGE_SIZE;
+
+	fn_ptr = get_unmapped_area(NULL, FASTCALL_ADDR, len, 0, 0);
+	if (IS_ERR_VALUE(fn_ptr))
+		return fn_ptr;
+
+	vma = _install_special_mapping(mm, fn_ptr, len, VM_READ | VM_MAYREAD,
+				       &function_mapping);
+	if (IS_ERR(vma))
+		return (unsigned long)vma;
+
+	err = vm_insert_pages(vma, fn_ptr, pages, &num);
+	if (err) {
+		unmap_function(fn_ptr);
+
+		return err;
+	}
+
+	return fn_ptr;
+}
+
+/*
+ * register_fastcall - registers a new fastcall into the fastcall table
+ *
+ * @pages   - List of text pages for the fastcall
+ * @num     - Number of pages in the attribute pages
+ * @attribs - Additional attributes to put into the fastcall table
+ *
+ * This creates a new fastcall table and stack if needed.
+ * Then the fastcall code is mapped to user space.
+ * Finally, the function pointer is inserted into the fastcall table.
+ */
+int register_fastcall(struct page **pages, unsigned long num,
+		      fastcall_attr attribs)
+{
+	int ret = 0;
+	struct mm_struct *mm = current->mm;
+	struct page *page;
+	struct fastcall_table *table;
+	unsigned long fn_ptr;
+
+	if (mmap_write_lock_killable(mm))
+		return -EINTR;
+
+	page = find_fastcall_table();
+	if (IS_ERR(page)) {
+		ret = PTR_ERR(page);
+		goto fail_find_table;
+	}
+
+	fn_ptr = install_function_mapping(pages, num);
+	if (IS_ERR_VALUE(fn_ptr)) {
+		ret = (long)fn_ptr;
+		goto fail_find_table;
+	}
+
+	// No need to get the page as it is pinned already
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
 	table = kmap(page);
 	if (mutex_lock_killable(&table->mutex)) {
+		unmap_function(fn_ptr);
 		ret = -EINTR;
-		goto fail_lock;
+		goto fail_table_lock;
 	}
 
-fail_lock:
+	mutex_unlock(&table->mutex);
+fail_table_lock:
 	kunmap(page);
 	// Marking accessed or dirty is not needed because the pages are pinned all the time.
-	put_page(page);
+fail_find_table:
+	mmap_write_unlock(mm);
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL(register_fastcall);

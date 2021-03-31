@@ -18,8 +18,10 @@
 #include <linux/mm_types.h>
 
 #ifdef CONFIG_FASTCALL
+typedef long fastcall_attr[3];
+
 extern int setup_fastcall_page(void);
-extern int register_fastcall(struct page **);
+extern int register_fastcall(struct page **, unsigned long, fastcall_attr);
 #else
 int setup_fastcall_page(void)
 {

@@ -733,9 +733,10 @@ _ASM_NOKPROBE(common_interrupt_return)
  * Call the desired fastcall function using the fastcall table.
  * 
  * The registers are used in the following way:
- * %rax    in: syscall number, free to use; out: return value
+ * %rax    in: syscall number, free to use
+ *         out: return value
  * %rdi		 the index into the fastcall table
- * TODO document further
+ *         contains a pointer to the table entry on fastcall function calls
  */
 SYM_CODE_START_LOCAL(fastcall)
 	UNWIND_HINT_EMPTY
@@ -745,7 +746,9 @@ SYM_CODE_START_LOCAL(fastcall)
 	jae fastcall_noop
 	imulq $FC_ENTRY_SIZE, %rdi
 	movq $FASTCALL_ADDR, %rax
-	movq (%rax, %rdi), %rax
+	addq %rax, %rdi
+	// This has aquire semantics in x86
+	movq (%rdi), %rax
 	/* 
 	 * fastcalls can not see any secret information.
 	 * Therefore this is not vulnerable to Spectre.

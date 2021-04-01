@@ -19,6 +19,8 @@
 #define NR_ENTRIES                                                             \
 	((PAGE_SIZE - sizeof(struct mutex)) / sizeof(struct fastcall_entry))
 
+const void fastcall_noop(void);
+
 /*
  * fastcall_entry - a single entry of the fastcall table
  *
@@ -119,34 +121,52 @@ static const struct vm_special_mapping unmappable_mapping = {
 int setup_fastcall_page(void)
 {
 	int ret = 0;
+	size_t i;
 	struct vm_area_struct *vma;
 	struct mm_struct *mm = current->mm;
-	// TODO insert the correct pages here and initialize mutex
-	struct page *pages[] = { ZERO_PAGE(0), ZERO_PAGE(0) };
-	unsigned long num = NR_FC_EXTRA_PAGES;
+	struct page *page;
+	struct fastcall_table *table;
 
-	if (mmap_write_lock_killable(mm))
-		return -EINTR;
+	page = alloc_page(GFP_FASTCALL);
+	if (!page)
+		return -ENOMEM;
+
+	table = kmap(page);
+	mutex_init(&table->mutex);
+	for (i = 0; i < NR_ENTRIES; i++)
+		table->entries[i].fn_ptr = (void *)fastcall_noop;
+	kunmap(page);
+
+	if (mmap_write_lock_killable(mm)) {
+		ret = -EINTR;
+		goto fail_lock;
+	}
 
 	vma = _install_special_mapping(mm, FC_STACK_BOTTOM,
 				       NR_FC_PAGES * PAGE_SIZE,
 				       VM_READ | VM_MAYREAD, &fastcall_mapping);
-	if (IS_ERR(vma)) {
-		pr_warn("fastcall: can't install mapping");
+	if (WARN_ON(IS_ERR(vma))) {
 		ret = PTR_ERR(vma);
-		goto up_fail;
+		goto fail_install;
 	}
 
-	ret = vm_insert_pages(vma, FC_STACK_TOP, pages, &num);
-	if (ret < 0) {
-		pr_warn("fastcall: can't insert page, error %d", ret);
+	ret = vm_insert_page(vma, FASTCALL_ADDR, page);
+	if (WARN_ON(ret < 0)) {
 		do_munmap(mm, FC_STACK_TOP, NR_FC_EXTRA_PAGES * PAGE_SIZE,
 			  NULL);
-		goto up_fail;
 	}
 
-up_fail:
+fail_install:
 	mmap_write_unlock(mm);
+	if (ret < 0) {
+		table = kmap(page);
+		// Destroy mutex for mutex debugging (CONFIG_DEBUG_MUTEXES)
+		mutex_destroy(&table->mutex);
+		kunmap(page);
+	}
+fail_lock:
+	__free_page(page);
+
 	return ret;
 }
 
@@ -315,6 +335,8 @@ int register_fastcall(struct page **pages, unsigned long num,
 	}
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
+	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);
+	BUILD_BUG_ON(sizeof(struct fastcall_entry) != FC_ENTRY_SIZE);
 	table = kmap(page);
 	if (mutex_lock_killable(&table->mutex)) {
 		ret = -EINTR;

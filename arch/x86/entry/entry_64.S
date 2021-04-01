@@ -39,6 +39,7 @@
 #include <asm/trapnr.h>
 #include <asm/nospec-branch.h>
 #include <asm/fsgsbase.h>
+#include <asm-generic/errno-base.h>
 #include <linux/err.h>
 #include <asm/fastcall.h>
 
@@ -727,20 +728,41 @@ native_irq_return_ldt:
 SYM_CODE_END(common_interrupt_return)
 _ASM_NOKPROBE(common_interrupt_return)
 
+#ifdef CONFIG_FASTCALL
 /*
  * Call the desired fastcall function using the fastcall table.
  * 
  * The registers are used in the following way:
- * %rax    return value
+ * %rax    in: syscall number, free to use; out: return value
+ * %rdi		 the index into the fastcall table
  * TODO document further
  */
-#ifdef CONFIG_FASTCALL
 SYM_CODE_START_LOCAL(fastcall)
+	UNWIND_HINT_EMPTY
 	ASM_STAC // disable SMAP temporarily
-	movq (FASTCALL_ADDR), %rax
+	// execute no-op function if index is invalid
+	cmpq $FC_NR_ENTRIES, %rdi
+	jae fastcall_noop
+	imulq $FC_ENTRY_SIZE, %rdi
+	movq $FASTCALL_ADDR, %rax
+	movq (%rax, %rdi), %rax
+	/* 
+	 * fastcalls can not see any secret information.
+	 * Therefore this is not vulnerable to Spectre.
+	 */
+	ANNOTATE_RETPOLINE_SAFE
+	jmpq *%rax
+SYM_CODE_END(fastcall)
+
+/*
+ * fastcall_noop - fastcall function that just returns -EINVAL
+ */
+SYM_CODE_START(fastcall_noop)
+	UNWIND_HINT_EMPTY
+	mov $-EINVAL, %rax
 	ASM_CLAC
 	sysretq
-SYM_CODE_END(fastcall)
+SYM_CODE_END(fastcall_noop)
 #endif /* CONFIG_FASTCALL */
 
 /*

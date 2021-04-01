@@ -348,7 +348,7 @@ int register_fastcall(struct page **pages, unsigned long num,
 		size_t j;
 		struct fastcall_entry *entry = &table->entries[i];
 
-		if (entry->fn_ptr)
+		if (entry->fn_ptr != fastcall_noop)
 			continue;
 
 		for (j = 0; j < NR_FC_ATTRIBS; j++) {

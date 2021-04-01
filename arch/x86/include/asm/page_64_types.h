@@ -80,7 +80,7 @@
 #define TASK_SIZE_MAX	((_AC(1,UL) << __VIRTUAL_MASK_SHIFT) - PAGE_SIZE)
 
 #ifdef CONFIG_FASTCALL
-#define NR_FC_EXTRA_PAGES 2
+#define NR_FC_EXTRA_PAGES 1
 /* 
  * NR_FC_PAGES - size of the fastcall region mapped into every process
  */

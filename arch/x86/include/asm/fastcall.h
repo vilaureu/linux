@@ -15,11 +15,7 @@
  */
 #define FASTCALL_ADDR (0x7fffffffffff & PAGE_MASK)
 
-/*
- * FC_DEFAULT_ADDR - virtual address of the page with the default fastcall functions
- */
-#define FC_DEFAULT_ADDR (FASTCALL_ADDR - PAGE_SIZE)
-#define FC_STACK_TOP FC_DEFAULT_ADDR
+#define FC_STACK_TOP FASTCALL_ADDR
 
 /*
  * FC_STACK_BOTTOM - virtual address of the first fastcall stack

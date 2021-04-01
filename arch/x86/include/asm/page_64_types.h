@@ -80,8 +80,14 @@
 #define TASK_SIZE_MAX	((_AC(1,UL) << __VIRTUAL_MASK_SHIFT) - PAGE_SIZE)
 
 #ifdef CONFIG_FASTCALL
+#define NR_FC_EXTRA_PAGES 2
+/* 
+ * NR_FC_PAGES - size of the fastcall region mapped into every process
+ */
+#define NR_FC_PAGES (nr_cpu_ids + NR_FC_EXTRA_PAGES)
+
 /* Make room for the fastcall pages above the stack. */
-#define DEFAULT_MAP_WINDOW	((1UL << 47) - (nr_cpu_ids + 1) * PAGE_SIZE)
+#define DEFAULT_MAP_WINDOW	((1UL << 47) - NR_FC_PAGES * PAGE_SIZE)
 #else
 #define DEFAULT_MAP_WINDOW	((1UL << 47) - PAGE_SIZE)
 #endif

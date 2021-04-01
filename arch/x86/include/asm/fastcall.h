@@ -6,6 +6,8 @@
 
 #define NR_fastcall 442
 
+#ifdef CONFIG_FASTCALL
+
 /* 
  * FASTCALL_ADDR - address of the fastcall jump table in user space
  *
@@ -13,11 +15,25 @@
  */
 #define FASTCALL_ADDR (0x7fffffffffff & PAGE_MASK)
 
+/*
+ * FC_DEFAULT_ADDR - virtual address of the page with the default fastcall functions
+ */
+#define FC_DEFAULT_ADDR (FASTCALL_ADDR - PAGE_SIZE)
+#define FC_STACK_TOP FC_DEFAULT_ADDR
+
+/*
+ * FC_STACK_BOTTOM - virtual address of the first fastcall stack
+ */
+#define FC_STACK_BOTTOM (FC_STACK_TOP - nr_cpu_ids * PAGE_SIZE)
+
+#endif /* CONFIG_FASTCALL */
+
 #ifndef __ASSEMBLER__
 
 #include <linux/mm_types.h>
 
 #ifdef CONFIG_FASTCALL
+
 #define NR_FC_ATTRIBS 3
 typedef long fastcall_attr[NR_FC_ATTRIBS];
 
@@ -28,6 +44,7 @@ int setup_fastcall_page(void)
 {
 	return 0;
 }
+
 #endif /* CONFIG_FASTCALL */
 
 #endif /* __ASSEMBLER__ */

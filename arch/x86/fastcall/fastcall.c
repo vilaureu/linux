@@ -11,6 +11,7 @@
 #include <linux/init.h>
 #include <linux/highmem.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
 #include <asm/fastcall.h>
 #include <asm/barrier.h>
 
@@ -67,6 +68,8 @@ static vm_fault_t fastcall_fault(const struct vm_special_mapping *sm,
 
 /*
  * fastcall_mapping - mapping for the fastcall table and stack pages
+ *
+ * TODO mutex_destroy for CONFIG_DEBUG_MUTEXES
  */
 static const struct vm_special_mapping fastcall_mapping = {
 	.name = "[fastcall]",
@@ -106,6 +109,8 @@ static const struct vm_special_mapping unmappable_mapping = {
  *     0x7fffffffffff +--------------------+
  *           one page | fastcall table     |
  *      FASTCALL_ADDR +--------------------+
+ *           one page | default functions  |
+ *                    +--------------------+
  *   one page per CPU | fastcall stacks    |
  *                    +--------------------+
  *                    | rest of user space |
@@ -115,14 +120,16 @@ int setup_fastcall_page(void)
 {
 	int ret = 0;
 	struct vm_area_struct *vma;
-	unsigned nr_pages = 1 + nr_cpu_ids;
-	unsigned long vma_start = FASTCALL_ADDR - nr_cpu_ids * PAGE_SIZE;
 	struct mm_struct *mm = current->mm;
+	// TODO insert the correct pages here and initialize mutex
+	struct page *pages[] = { ZERO_PAGE(0), ZERO_PAGE(0) };
+	unsigned long num = NR_FC_EXTRA_PAGES;
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
 
-	vma = _install_special_mapping(mm, vma_start, nr_pages * PAGE_SIZE,
+	vma = _install_special_mapping(mm, FC_STACK_BOTTOM,
+				       NR_FC_PAGES * PAGE_SIZE,
 				       VM_READ | VM_MAYREAD, &fastcall_mapping);
 	if (IS_ERR(vma)) {
 		pr_warn("fastcall: can't install mapping");
@@ -130,10 +137,11 @@ int setup_fastcall_page(void)
 		goto up_fail;
 	}
 
-	ret = vm_insert_page(vma, FASTCALL_ADDR, ZERO_PAGE(0));
+	ret = vm_insert_pages(vma, FC_STACK_TOP, pages, &num);
 	if (ret < 0) {
 		pr_warn("fastcall: can't insert page, error %d", ret);
-		do_munmap(mm, FASTCALL_ADDR, PAGE_SIZE, NULL);
+		do_munmap(mm, FC_STACK_TOP, NR_FC_EXTRA_PAGES * PAGE_SIZE,
+			  NULL);
 		goto up_fail;
 	}
 
@@ -143,93 +151,76 @@ up_fail:
 }
 
 /*
- * create_fastcall_pages - creates and inserts a new fastcall table and new stacks
- *
- * TODO change if fastcall table not created here anymore
+ * find_fastcall_vma - find the vma containing the fastcall pages
  */
-static struct page *create_fastcall_pages(struct vm_area_struct *vma,
-					  struct page *old)
-{
-	int err;
-	unsigned long start = FASTCALL_ADDR - nr_cpu_ids * PAGE_SIZE;
-	unsigned long addr;
-	struct page *page;
-	struct fastcall_table *table;
-
-	// The stack pages are not mapped yet.
-	for (addr = start; addr < FASTCALL_ADDR; addr += PAGE_SIZE) {
-		page = alloc_page(GFP_FASTCALL);
-		if (!page) {
-			zap_page_range(vma, start, addr - start);
-			return ERR_PTR(-ENOMEM);
-		}
-		err = vm_insert_page(vma, addr, page);
-		__free_page(page);
-		if (err < 0) {
-			zap_page_range(vma, start, addr - start);
-			return ERR_PTR(err);
-		}
-	}
-
-	page = alloc_page(GFP_FASTCALL);
-	if (!page) {
-		zap_page_range(vma, start, nr_cpu_ids * PAGE_SIZE);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	// TODO Here is a race condition currently in which a table access can fault
-	zap_page_range(vma, FASTCALL_ADDR, PAGE_SIZE);
-	err = vm_insert_page(vma, FASTCALL_ADDR, page);
-	if (err < 0) {
-		__free_page(page);
-		zap_page_range(vma, start, nr_cpu_ids * PAGE_SIZE);
-		return ERR_PTR(err);
-	}
-
-	table = kmap(page);
-	mutex_init(&table->mutex);
-	kunmap(page);
-	__free_page(page);
-
-	return page;
-}
-
-/*
- * find_fastcall_table - Find the page containing the fastcall of the process.
- *
- * The table is created if it was only the zero page previously.
- * Therefor the mmap lock must be held writable.
- */
-static struct page *find_fastcall_table(void)
+static struct vm_area_struct *find_fastcall_vma(void)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
-	struct page *page = NULL;
 
-	// Search for the fastcall mapping
-	// TODO maybe replace with pin get_user_pages
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (!vma_is_special_mapping(vma, &fastcall_mapping))
 			continue;
 
-		// Get the page with the fastcall table
-		page = follow_page(vma, FASTCALL_ADDR, 0);
-		if (WARN_ON(page == NULL))
-			return ERR_PTR(-EFAULT);
-
-		if (WARN_ON(IS_ERR(page)))
-			return page;
-
-		if (page == ZERO_PAGE(0)) {
-			return create_fastcall_pages(vma, page);
-		}
-
-		return page;
+		return vma;
 	}
 
-	WARN(true, "fastcall: no fastcall table found in process");
-	return ERR_PTR(-EFAULT);
+	// No fastcall mapping was found in the process.
+	BUG();
 }
+
+/*
+ * create_fastcall_stacks - create per-CPU fastcall stacks
+ *
+ * No operation is performed when the stacks are already created.
+ */
+static int create_fastcall_stacks(void)
+{
+	int err = 0;
+	struct page **pages;
+	unsigned long num = nr_cpu_ids;
+	struct vm_area_struct *vma = find_fastcall_vma();
+	int i;
+
+	if (!IS_ERR_OR_NULL(follow_page(vma, FC_STACK_BOTTOM, 0)))
+		return 0;
+
+	pages = kmalloc(nr_cpu_ids * sizeof(struct page *), GFP_KERNEL);
+	if (!pages) {
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < nr_cpu_ids; i++) {
+		pages[i] = alloc_page(GFP_FASTCALL);
+		if (!pages[i]) {
+			err = -ENOMEM;
+			goto fail_alloc;
+		}
+	}
+
+	err = vm_insert_pages(vma, FC_STACK_BOTTOM, pages, &num);
+	if (err < 0)
+		zap_page_range(vma, FC_STACK_BOTTOM,
+			       (nr_cpu_ids - num) * PAGE_SIZE);
+
+fail_alloc:
+	for (i--; i >= 0; i--)
+		__free_page(pages[i]);
+	kfree(pages);
+
+	return err;
+}
+
+/*
+ * zap_stacks - remove the fastcall stacks from the page table
+ *
+ * TODO remove
+ */
+// static void zap_stacks(void)
+// {
+// 	struct vm_area_struct *vma = find_fastcall_vma();
+// 	zap_page_range(vma, FC_STACK_BOTTOM, nr_cpu_ids * PAGE_SIZE);
+// }
 
 /*
  * unmap_function - unmap fastcall function text pages at this address
@@ -309,19 +300,19 @@ int register_fastcall(struct page **pages, unsigned long num,
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
 
-	page = find_fastcall_table();
-	if (IS_ERR(page)) {
-		ret = PTR_ERR(page);
-		goto fail_find_table;
-	}
+	ret = pin_user_pages(FASTCALL_ADDR, 1, FOLL_TOUCH, &page, NULL);
+	if (ret < 0)
+		goto fail_pin_table;
+
+	ret = create_fastcall_stacks();
+	if (ret < 0)
+		goto fail_create_stacks;
 
 	fn_ptr = install_function_mapping(pages, num);
 	if (IS_ERR_VALUE(fn_ptr)) {
 		ret = (long)fn_ptr;
-		goto fail_find_table;
+		goto fail_install_function;
 	}
-
-	// No need to get the page as it is pinned already
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
 	table = kmap(page);
@@ -355,8 +346,12 @@ fail_table_lock:
 	if (ret < 0)
 		unmap_function(fn_ptr);
 	kunmap(page);
-	// Marking accessed or dirty is not needed because the pages are pinned all the time.
-fail_find_table:
+	// Marking accessed or dirty is not needed because the pages can not be evicted.
+fail_install_function:
+	unpin_user_page(page);
+fail_create_stacks:
+	// There is no need to remove the created stacks
+fail_pin_table:
 	mmap_write_unlock(mm);
 
 	return ret;

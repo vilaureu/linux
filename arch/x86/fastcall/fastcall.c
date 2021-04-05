@@ -277,7 +277,7 @@ static unsigned long install_function_mapping(struct page **pages,
 	struct vm_area_struct *vma;
 	unsigned long len = num * PAGE_SIZE;
 
-	fn_ptr = get_unmapped_area(NULL, FASTCALL_ADDR, len, 0, 0);
+	fn_ptr = get_unmapped_area(NULL, 0, len, 0, 0);
 	if (IS_ERR_VALUE(fn_ptr))
 		return fn_ptr;
 

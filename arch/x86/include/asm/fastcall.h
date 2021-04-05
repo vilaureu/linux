@@ -37,7 +37,8 @@
 typedef long fastcall_attr[NR_FC_ATTRIBS];
 
 extern int setup_fastcall_page(void);
-extern int register_fastcall(struct page **, unsigned long, fastcall_attr);
+extern int register_fastcall(struct page **, unsigned long, unsigned long,
+			     fastcall_attr);
 #else
 int setup_fastcall_page(void)
 {

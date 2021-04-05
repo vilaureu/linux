@@ -251,7 +251,7 @@ static void unmap_function(unsigned long fn_ptr)
 	struct vm_area_struct *vma;
 
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (vma->vm_start == fn_ptr)
+		if (vma->vm_start <= fn_ptr && fn_ptr < vma->vm_end)
 			break;
 	}
 
@@ -301,13 +301,14 @@ static unsigned long install_function_mapping(struct page **pages,
  *
  * @pages   - List of text pages for the fastcall
  * @num     - Number of pages in the attribute pages
+ * @off     - Offset of the entry point into the pages
  * @attribs - Additional attributes to put into the fastcall table
  *
  * This creates a new fastcall table and stack if needed.
  * Then the fastcall code is mapped to user space.
  * Finally, the function pointer is inserted into the fastcall table.
  */
-int register_fastcall(struct page **pages, unsigned long num,
+int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
 		      fastcall_attr attribs)
 {
 	int ret = 0;
@@ -316,6 +317,8 @@ int register_fastcall(struct page **pages, unsigned long num,
 	struct page *page;
 	struct fastcall_table *table;
 	unsigned long fn_ptr;
+
+	BUG_ON(num * PAGE_SIZE <= off);
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
@@ -333,6 +336,7 @@ int register_fastcall(struct page **pages, unsigned long num,
 		ret = (long)fn_ptr;
 		goto fail_install_function;
 	}
+	fn_ptr += off;
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
 	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);

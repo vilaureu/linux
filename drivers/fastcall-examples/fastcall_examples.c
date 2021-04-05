@@ -45,7 +45,8 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 
 	switch (cmd) {
 	case 0:
-		return register_fastcall(pages, 1, attribs);
+		// TODO correct offset
+		return register_fastcall(pages, 1, 0x123, attribs);
 	}
 
 	return ret;

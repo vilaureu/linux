@@ -739,7 +739,6 @@ _ASM_NOKPROBE(common_interrupt_return)
  *         contains a pointer to the table entry on fastcall function calls
  */
 SYM_CODE_START_LOCAL(fastcall)
-	UNWIND_HINT_EMPTY
 	ASM_STAC // disable SMAP temporarily
 	// execute no-op function if index is invalid
 	cmpq $FC_NR_ENTRIES, %rdi
@@ -761,7 +760,6 @@ SYM_CODE_END(fastcall)
  * fastcall_noop - fastcall function that just returns -EINVAL
  */
 SYM_CODE_START(fastcall_noop)
-	UNWIND_HINT_EMPTY
 	mov $-EINVAL, %rax
 	ASM_CLAC
 	sysretq

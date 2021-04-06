@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
+#include <linux/mm.h>
 #include <asm/fastcall.h>
 #include <asm/pgtable.h>
 
@@ -14,6 +15,8 @@ MODULE_DESCRIPTION(
 	"An example device driver which adds some fastcalls for testing and benchmarking.");
 
 #define FCE_DEVICE_NAME "fastcall-examples"
+
+const void fce_noop(void);
 
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
@@ -35,18 +38,28 @@ static int fce_open(struct inode *inode, struct file *file)
 }
 
 /*
+ * function_offset - return the offset of the function into the containing page
+ */
+static unsigned long function_offset(const void (*fn)(void))
+{
+	unsigned long fn_l = (unsigned long)fn;
+	return fn_l - PAGE_ALIGN(fn_l);
+}
+
+/*
  * fce_ioctl() - register the example fastcall specified by cmd
  */
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -EINVAL;
-	struct page *pages[] = { ZERO_PAGE(0) };
+	struct page *pages[1];
 	fastcall_attr attribs = { 0, 0, 0 };
 
 	switch (cmd) {
 	case 0:
-		// TODO correct offset
-		return register_fastcall(pages, 1, 0x123, attribs);
+		pages[0] = virt_to_page(fce_noop);
+		return register_fastcall(pages, 1, function_offset(fce_noop),
+					 attribs);
 	}
 
 	return ret;

@@ -10,7 +10,7 @@ obj-y				+= irqchip/
 obj-y				+= bus/
 
 obj-$(CONFIG_GENERIC_PHY)	+= phy/
-obj-y				+= fastcall-examples/
+obj-$(CONFIG_FASTCALL_EXAMPLES)	+= fastcall-examples/
 
 # GPIO must come after pinctrl as gpios may need to mux pins etc
 obj-$(CONFIG_PINCTRL)		+= pinctrl/

@@ -6,23 +6,22 @@
  */
 
 #include <linux/linkage.h>
-#include <asm/smap.h>
-#include <asm/page_types.h>
+#include <asm/nospec-branch.h>
+#include <asm/unwind_hints.h>
 
 .text
-// Align the functions to a page boundary
-.align PAGE_SIZE
+
+SYM_INNER_LABEL(fce_functions_start, SYM_L_GLOBAL)
 
 /*
  * fce_noop - sysret with return value 0
  */
 SYM_CODE_START(fce_noop)
+	UNWIND_HINT_EMPTY
 	movq $0, %rax
+
+	ANNOTATE_RETPOLINE_SAFE
 	jmpq *%rdi
 SYM_CODE_END(fce_noop)
 
-/*
- * Fill the rest of the page with zeros,
- * such that no other kernel text gets exposed to the user space.
- */
-. = PAGE_SIZE
+SYM_INNER_LABEL(fce_functions_end, SYM_L_GLOBAL)

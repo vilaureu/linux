@@ -34,6 +34,8 @@
 
 #ifdef CONFIG_FASTCALL
 
+#define GFP_FASTCALL (GFP_HIGHUSER | __GFP_ZERO | __GFP_ACCOUNT)
+
 typedef long fastcall_attr[NR_FC_ATTRIBS];
 
 extern int setup_fastcall_page(void);

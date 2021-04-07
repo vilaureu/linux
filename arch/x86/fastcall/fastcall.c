@@ -15,7 +15,6 @@
 #include <asm/fastcall.h>
 #include <asm/barrier.h>
 
-#define GFP_FASTCALL (GFP_HIGHUSER | __GFP_ZERO | __GFP_ACCOUNT)
 #define NR_ENTRIES                                                             \
 	((PAGE_SIZE - sizeof(struct mutex)) / sizeof(struct fastcall_entry))
 
@@ -291,7 +290,6 @@ static unsigned long install_function_mapping(struct page **pages,
 	err = vm_insert_pages(vma, fn_ptr, pages, &num);
 	if (err) {
 		unmap_function(fn_ptr);
-
 		return err;
 	}
 
@@ -339,8 +337,6 @@ int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
 		goto fail_install_function;
 	}
 	fn_ptr += off;
-
-	pr_info("fastcall: cr4 %lx", __read_cr4());
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
 	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);

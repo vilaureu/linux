@@ -1,27 +1,41 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * fastcall_examples.c - an example device driver which adds some fastcalls for testing and benchmarking
+ * fastcall_driver.c - an example device driver which adds some fastcalls for testing and benchmarking
  */
 
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/mm.h>
+#include <linux/highmem.h>
+#include <linux/minmax.h>
 #include <asm/fastcall.h>
 #include <asm/pgtable.h>
 
-MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION(
 	"An example device driver which adds some fastcalls for testing and benchmarking.");
 
 #define FCE_DEVICE_NAME "fastcall-examples"
 
+/*
+ * Function labels from fastcall_functions.S.
+ */
+const void fce_functions_start(void);
 const void fce_noop(void);
+const void fce_functions_end(void);
+
+/*
+ * FCE_FUNCTIONS_SIZE - size of the fastcall function text segment in bytes
+ */
+#define FCE_FUNCTIONS_SIZE                                                     \
+	((unsigned long)(fce_functions_end - fce_functions_start))
+#define NR_FCE_PAGES ((FCE_FUNCTIONS_SIZE - 1) / PAGE_SIZE + 1)
 
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
 static struct class *fce_class;
 static struct device *fce_device;
+static struct page *fce_pages[1];
 
 /*
  * fce_open() - open the device
@@ -42,8 +56,7 @@ static int fce_open(struct inode *inode, struct file *file)
  */
 static unsigned long function_offset(const void (*fn)(void))
 {
-	unsigned long fn_l = (unsigned long)fn;
-	return fn_l - PAGE_ALIGN(fn_l);
+	return fn - fce_functions_start;
 }
 
 /*
@@ -52,13 +65,11 @@ static unsigned long function_offset(const void (*fn)(void))
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -EINVAL;
-	struct page *pages[1];
 	fastcall_attr attribs = { 0, 0, 0 };
 
 	switch (cmd) {
 	case 0:
-		pages[0] = virt_to_page(fce_noop);
-		return register_fastcall(pages, 1, function_offset(fce_noop),
+		return register_fastcall(fce_pages, 1, function_offset(fce_noop),
 					 attribs);
 	}
 
@@ -72,11 +83,29 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
  */
 static int __init fce_init(void)
 {
-	int result;
+	int result, page_id;
+	size_t count;
+	void *addr;
 	// TODO implement close to unregister fastcalls
 	static struct file_operations fops = { .owner = THIS_MODULE,
 					       .open = fce_open,
 					       .unlocked_ioctl = fce_ioctl };
+
+	// Allocate pages for example function and copy them
+	BUG_ON(NR_FCE_PAGES != sizeof(fce_pages) / sizeof(struct page *));
+	for (page_id = 0; page_id < NR_FCE_PAGES; page_id++) {
+		fce_pages[page_id] = alloc_page(GFP_FASTCALL);
+		if (!fce_pages[page_id]) {
+			pr_warn("fce: can't allocate function page");
+			result = -ENOMEM;
+			goto fail_page_alloc;
+		}
+		addr = kmap(fce_pages[page_id]);
+		count = min(FCE_FUNCTIONS_SIZE - page_id * PAGE_SIZE,
+			    PAGE_SIZE);
+		memcpy(addr, fce_functions_start, count);
+		kunmap(fce_pages[page_id]);
+	}
 
 	// Allocate one character device number with dynamic major number
 	result = alloc_chrdev_region(&fce_dev, 0, 1, FCE_DEVICE_NAME);
@@ -130,16 +159,27 @@ fail_cdev_add:
 fail_cdev_alloc:
 	unregister_chrdev_region(fce_dev, 1);
 fail_chrdev:
+fail_page_alloc:
+	for (page_id--; page_id >= 0; page_id--)
+		__free_page(fce_pages[page_id]);
+
 	return result;
 }
 
 static void __exit fce_exit(void)
 {
+	unsigned page_id;
+
 	device_destroy(fce_class, fce_dev);
 	class_destroy(fce_class);
 	cdev_del(fce_cdev);
 	unregister_chrdev_region(fce_dev, 1);
+
+	for (page_id = 0; page_id < NR_FCE_PAGES; page_id++)
+		__free_page(fce_pages[page_id]);
 }
 
 module_init(fce_init);
 module_exit(fce_exit);
+
+MODULE_LICENSE("GPL");

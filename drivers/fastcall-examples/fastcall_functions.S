@@ -9,7 +9,6 @@
 #include <asm/smap.h>
 #include <asm/page_types.h>
 
-
 .text
 // Align the functions to a page boundary
 .align PAGE_SIZE
@@ -18,9 +17,8 @@
  * fce_noop - sysret with return value 0
  */
 SYM_CODE_START(fce_noop)
-	mov $0, %rax
-  ASM_CLAC
-  sysretq
+	movq $0, %rax
+	jmpq *%rdi
 SYM_CODE_END(fce_noop)
 
 /*

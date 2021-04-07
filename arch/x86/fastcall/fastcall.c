@@ -281,8 +281,10 @@ static unsigned long install_function_mapping(struct page **pages,
 	if (IS_ERR_VALUE(fn_ptr))
 		return fn_ptr;
 
-	vma = _install_special_mapping(mm, fn_ptr, len, VM_READ | VM_MAYREAD,
-				       &function_mapping);
+	// Pages need to be executable also in kernel mode
+	vma = _install_special_mapping(
+		mm, fn_ptr, len, VM_READ | VM_MAYREAD | VM_EXEC | VM_MAYEXEC,
+		&function_mapping);
 	if (IS_ERR(vma))
 		return (unsigned long)vma;
 
@@ -337,6 +339,8 @@ int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
 		goto fail_install_function;
 	}
 	fn_ptr += off;
+
+	pr_info("fastcall: cr4 %lx", __read_cr4());
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
 	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);

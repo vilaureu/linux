@@ -19,6 +19,7 @@
  * - idtentry:		Define exception entry points.
  */
 #include <linux/linkage.h>
+#include <linux/err.h>
 #include <asm/segment.h>
 #include <asm/cache.h>
 #include <asm/errno.h>
@@ -40,8 +41,8 @@
 #include <asm/nospec-branch.h>
 #include <asm/fsgsbase.h>
 #include <asm-generic/errno-base.h>
-#include <linux/err.h>
 #include <asm/fastcall.h>
+#include <asm/processor-flags.h>
 
 #include "calling.h"
 
@@ -734,36 +735,70 @@ _ASM_NOKPROBE(common_interrupt_return)
  * 
  * The registers are used in the following way:
  * %rax    in: syscall number, free to use
- *         out: return value
- * %rdi		 the index into the fastcall table
- *         contains a pointer to the table entry on fastcall function calls
+ *         out: pointer to the table entry of the function
+ * %rdi		 in: index into the fastcall table
+ *         out: absolute address of fastcall_sysret
  */
 SYM_CODE_START_LOCAL(fastcall)
-	ASM_STAC // disable SMAP temporarily
-	// execute no-op function if index is invalid
+	// Disable SMAP temporarily
+	ASM_STAC
+	
+	// Disable SMEP temporarily
+	ALTERNATIVE "jmp disabled_smep", "", X86_FEATURE_SMEP
+	movq %cr4, %rax
+	andq $(~X86_CR4_SMEP), %rax
+	movq %rax, %cr4
+
+disabled_smep:
+	// Execute no-op function if index is invalid
 	cmpq $FC_NR_ENTRIES, %rdi
 	jae fastcall_noop
+
+	// Load function address
 	imulq $FC_ENTRY_SIZE, %rdi
 	movq $FASTCALL_ADDR, %rax
-	addq %rax, %rdi
-	// This has aquire semantics in x86
-	movq (%rdi), %rax
+	addq %rdi, %rax
+
+	lea fastcall_sysret(%rip), %rdi
+
 	/* 
 	 * fastcalls can not see any secret information.
 	 * Therefore this is not vulnerable to Spectre.
 	 */
 	ANNOTATE_RETPOLINE_SAFE
-	jmpq *%rax
+	// This has aquire semantics in x86
+	jmpq *(%rax)
 SYM_CODE_END(fastcall)
 
 /*
  * fastcall_noop - fastcall function that just returns -EINVAL
  */
 SYM_CODE_START(fastcall_noop)
-	mov $-EINVAL, %rax
+	movq $-EINVAL, %rax
+
+	ANNOTATE_RETPOLINE_SAFE
+	jmpq *%rdi
+SYM_CODE_END(fastcall_noop)
+
+/*
+ * fastcall_sysret - perform fastcall function exit sequence
+ *
+ * %rdi is set to zero. All other registers are left unchanged.
+ */
+SYM_CODE_START(fastcall_sysret)
+	// Enable SMEP again
+	ALTERNATIVE "jmp enabled_smep", "", X86_FEATURE_SMEP
+	movq %cr4, %rdi
+	orq $(X86_CR4_SMEP), %rdi
+	movq %rdi, %cr4
+
+enabled_smep:
+	// Do not leak %cr4 to the user
+	xorq %rdi, %rdi
+
 	ASM_CLAC
 	sysretq
-SYM_CODE_END(fastcall_noop)
+SYM_CODE_END(fastcall_sysret)
 #endif /* CONFIG_FASTCALL */
 
 /*

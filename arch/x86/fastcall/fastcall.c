@@ -17,6 +17,9 @@
 
 #define NR_ENTRIES                                                             \
 	((PAGE_SIZE - sizeof(struct mutex)) / sizeof(struct fastcall_entry))
+#define FASTCALL_VM_RW                                                         \
+	VM_READ | VM_MAYREAD | VM_WRITE | VM_MAYWRITE | VM_SHARED | VM_MAYSHARE
+#define FASTCALL_VM_RX VM_READ | VM_MAYREAD | VM_EXEC | VM_MAYEXEC
 
 const void fastcall_noop(void);
 
@@ -99,35 +102,12 @@ static const struct vm_special_mapping unmappable_mapping = {
 };
 
 /*
- * insert_su_pages - vm_insert_pages() with unsetting of the _PAGE_USER flags of the PTEs
+ * vma_set_kernel - remove _PAGE_USER from vma->vm_page_prot
  */
-int insert_su_pages(struct vm_area_struct *vma, unsigned long start,
-		    struct page **pages, unsigned long *num)
+void vma_set_kernel(struct vm_area_struct *vma)
 {
-	struct mm_struct *mm = current->mm;
-	spinlock_t *ptl;
-	pte_t *ptep;
-	pte_t pte;
-	unsigned long addr;
-	unsigned long num_pages = *num;
-	int err;
-
-	err = vm_insert_pages(vma, start, pages, num);
-	if (err)
-		return err;
-
-	for (addr = start; addr < start + num_pages * PAGE_SIZE;
-	     addr += PAGE_SIZE) {
-		ptep = get_locked_pte(mm, addr, &ptl);
-		err = -ENOMEM;
-		if (!ptep)
-			return -ENOMEM;
-		pte = pte_clear_flags(*ptep, _PAGE_USER);
-		set_pte_at(mm, addr, ptep, pte);
-		pte_unmap_unlock(pte, ptl);
-	}
-
-	return 0;
+	pgprotval_t pgval = pgprot_val(vma->vm_page_prot) & ~(_PAGE_USER);
+	WRITE_ONCE(vma->vm_page_prot, __pgprot(pgval));
 }
 
 /*
@@ -142,10 +122,8 @@ int insert_su_pages(struct vm_area_struct *vma, unsigned long start,
  *     0x7fffffffffff +--------------------+
  *           one page | fastcall table     |
  *      FASTCALL_ADDR +--------------------+
- *           one page | default functions  |
- *                    +--------------------+
  *   one page per CPU | fastcall stacks    |
- *                    +--------------------+
+ *    FC_STACK_BOTTOM +--------------------+
  *                    | rest of user space |
  *                0x0 +--------------------+
  */
@@ -153,7 +131,6 @@ int setup_fastcall_page(void)
 {
 	int ret = 0;
 	size_t i;
-	unsigned long num = 1;
 	struct vm_area_struct *vma;
 	struct mm_struct *mm = current->mm;
 	struct page *page;
@@ -175,14 +152,16 @@ int setup_fastcall_page(void)
 	}
 
 	vma = _install_special_mapping(mm, FC_STACK_BOTTOM,
-				       NR_FC_PAGES * PAGE_SIZE,
-				       VM_READ | VM_MAYREAD, &fastcall_mapping);
+				       NR_FC_PAGES * PAGE_SIZE, FASTCALL_VM_RW,
+				       &fastcall_mapping);
 	if (WARN_ON(IS_ERR(vma))) {
 		ret = PTR_ERR(vma);
 		goto fail_install;
 	}
 
-	ret = insert_su_pages(vma, FASTCALL_ADDR, &page, &num);
+	vma_set_kernel(vma);
+
+	ret = vm_insert_page(vma, FASTCALL_ADDR, page);
 	if (WARN_ON(ret < 0)) {
 		do_munmap(mm, FC_STACK_TOP, NR_FC_EXTRA_PAGES * PAGE_SIZE,
 			  NULL);
@@ -250,7 +229,7 @@ static int create_fastcall_stacks(void)
 		}
 	}
 
-	err = insert_su_pages(vma, FC_STACK_BOTTOM, pages, &num);
+	err = vm_insert_pages(vma, FC_STACK_BOTTOM, pages, &num);
 	if (err < 0)
 		zap_page_range(vma, FC_STACK_BOTTOM,
 			       (nr_cpu_ids - num) * PAGE_SIZE);
@@ -303,13 +282,14 @@ static unsigned long install_function_mapping(struct page **pages,
 		return fn_ptr;
 
 	// Pages need to be executable also in kernel mode
-	vma = _install_special_mapping(
-		mm, fn_ptr, len, VM_READ | VM_MAYREAD | VM_EXEC | VM_MAYEXEC,
-		&function_mapping);
+	vma = _install_special_mapping(mm, fn_ptr, len, FASTCALL_VM_RX,
+				       &function_mapping);
 	if (IS_ERR(vma))
 		return (unsigned long)vma;
 
-	err = insert_su_pages(vma, fn_ptr, pages, &num);
+	vma_set_kernel(vma);
+
+	err = vm_insert_pages(vma, fn_ptr, pages, &num);
 	if (err) {
 		unmap_function(fn_ptr);
 		return err;

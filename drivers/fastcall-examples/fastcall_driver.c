@@ -22,6 +22,7 @@ MODULE_DESCRIPTION(
  */
 const void fce_functions_start(void);
 const void fce_noop(void);
+const void fce_stack(void);
 const void fce_functions_end(void);
 
 /*
@@ -30,6 +31,9 @@ const void fce_functions_end(void);
 #define FCE_FUNCTIONS_SIZE                                                     \
 	((unsigned long)(fce_functions_end - fce_functions_start))
 #define NR_FCE_PAGES ((FCE_FUNCTIONS_SIZE - 1) / PAGE_SIZE + 1)
+
+#define FCE_IOCTL_NOOP 0
+#define FCE_IOCTL_STACK 1
 
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
@@ -68,8 +72,11 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 	fastcall_attr attribs = { 0, 0, 0 };
 
 	switch (cmd) {
-	case 0:
-		return register_fastcall(fce_pages, 1, function_offset(fce_noop),
+	case FCE_IOCTL_NOOP:
+		return register_fastcall(fce_pages, NR_FCE_PAGES, function_offset(fce_noop),
+					 attribs);
+	case FCE_IOCTL_STACK:
+		return register_fastcall(fce_pages, NR_FCE_PAGES, function_offset(fce_stack),
 					 attribs);
 	}
 

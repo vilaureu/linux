@@ -6,7 +6,6 @@
  */
 
 #include <linux/linkage.h>
-#include <asm/nospec-branch.h>
 #include <asm/unwind_hints.h>
 
 .text
@@ -20,8 +19,7 @@ SYM_CODE_START(fce_noop)
 	UNWIND_HINT_EMPTY
 	movq $0, %rax
 
-	ANNOTATE_RETPOLINE_SAFE
-	jmpq *%rdi
+	sysretq
 SYM_CODE_END(fce_noop)
 
 SYM_INNER_LABEL(fce_functions_end, SYM_L_GLOBAL)

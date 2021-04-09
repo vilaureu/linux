@@ -99,6 +99,38 @@ static const struct vm_special_mapping unmappable_mapping = {
 };
 
 /*
+ * insert_su_pages - vm_insert_pages() with unsetting of the _PAGE_USER flags of the PTEs
+ */
+int insert_su_pages(struct vm_area_struct *vma, unsigned long start,
+		    struct page **pages, unsigned long *num)
+{
+	struct mm_struct *mm = current->mm;
+	spinlock_t *ptl;
+	pte_t *ptep;
+	pte_t pte;
+	unsigned long addr;
+	unsigned long num_pages = *num;
+	int err;
+
+	err = vm_insert_pages(vma, start, pages, num);
+	if (err)
+		return err;
+
+	for (addr = start; addr < start + num_pages * PAGE_SIZE;
+	     addr += PAGE_SIZE) {
+		ptep = get_locked_pte(mm, addr, &ptl);
+		err = -ENOMEM;
+		if (!ptep)
+			return -ENOMEM;
+		pte = pte_clear_flags(*ptep, _PAGE_USER);
+		set_pte_at(mm, addr, ptep, pte);
+		pte_unmap_unlock(pte, ptl);
+	}
+
+	return 0;
+}
+
+/*
  * setup_fastcall_page - insert a page with fastcall function pointers into user space
  *
  * Memory layout of the fastcall pages:
@@ -121,6 +153,7 @@ int setup_fastcall_page(void)
 {
 	int ret = 0;
 	size_t i;
+	unsigned long num = 1;
 	struct vm_area_struct *vma;
 	struct mm_struct *mm = current->mm;
 	struct page *page;
@@ -149,7 +182,7 @@ int setup_fastcall_page(void)
 		goto fail_install;
 	}
 
-	ret = vm_insert_page(vma, FASTCALL_ADDR, page);
+	ret = insert_su_pages(vma, FASTCALL_ADDR, &page, &num);
 	if (WARN_ON(ret < 0)) {
 		do_munmap(mm, FC_STACK_TOP, NR_FC_EXTRA_PAGES * PAGE_SIZE,
 			  NULL);
@@ -217,7 +250,7 @@ static int create_fastcall_stacks(void)
 		}
 	}
 
-	err = vm_insert_pages(vma, FC_STACK_BOTTOM, pages, &num);
+	err = insert_su_pages(vma, FC_STACK_BOTTOM, pages, &num);
 	if (err < 0)
 		zap_page_range(vma, FC_STACK_BOTTOM,
 			       (nr_cpu_ids - num) * PAGE_SIZE);
@@ -229,17 +262,6 @@ fail_alloc:
 
 	return err;
 }
-
-/*
- * zap_stacks - remove the fastcall stacks from the page table
- *
- * TODO remove
- */
-// static void zap_stacks(void)
-// {
-// 	struct vm_area_struct *vma = find_fastcall_vma();
-// 	zap_page_range(vma, FC_STACK_BOTTOM, nr_cpu_ids * PAGE_SIZE);
-// }
 
 /*
  * unmap_function - unmap fastcall function text pages at this address
@@ -287,7 +309,7 @@ static unsigned long install_function_mapping(struct page **pages,
 	if (IS_ERR(vma))
 		return (unsigned long)vma;
 
-	err = vm_insert_pages(vma, fn_ptr, pages, &num);
+	err = insert_su_pages(vma, fn_ptr, pages, &num);
 	if (err) {
 		unmap_function(fn_ptr);
 		return err;

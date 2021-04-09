@@ -737,19 +737,8 @@ _ASM_NOKPROBE(common_interrupt_return)
  * %rax    in: syscall number, free to use
  *         out: pointer to the table entry of the function
  * %rdi		 in: index into the fastcall table
- *         out: absolute address of fastcall_sysret
  */
 SYM_CODE_START_LOCAL(fastcall)
-	// Disable SMAP temporarily
-	ASM_STAC
-	
-	// Disable SMEP temporarily
-	ALTERNATIVE "jmp disabled_smep", "", X86_FEATURE_SMEP
-	movq %cr4, %rax
-	andq $(~X86_CR4_SMEP), %rax
-	movq %rax, %cr4
-
-disabled_smep:
 	// Execute no-op function if index is invalid
 	cmpq $FC_NR_ENTRIES, %rdi
 	jae fastcall_noop
@@ -758,8 +747,6 @@ disabled_smep:
 	imulq $FC_ENTRY_SIZE, %rdi
 	movq $FASTCALL_ADDR, %rax
 	addq %rdi, %rax
-
-	lea fastcall_sysret(%rip), %rdi
 
 	/* 
 	 * fastcalls can not see any secret information.
@@ -776,29 +763,8 @@ SYM_CODE_END(fastcall)
 SYM_CODE_START(fastcall_noop)
 	movq $-EINVAL, %rax
 
-	ANNOTATE_RETPOLINE_SAFE
-	jmpq *%rdi
-SYM_CODE_END(fastcall_noop)
-
-/*
- * fastcall_sysret - perform fastcall function exit sequence
- *
- * %rdi is set to zero. All other registers are left unchanged.
- */
-SYM_CODE_START(fastcall_sysret)
-	// Enable SMEP again
-	ALTERNATIVE "jmp enabled_smep", "", X86_FEATURE_SMEP
-	movq %cr4, %rdi
-	orq $(X86_CR4_SMEP), %rdi
-	movq %rdi, %cr4
-
-enabled_smep:
-	// Do not leak %cr4 to the user
-	xorq %rdi, %rdi
-
-	ASM_CLAC
 	sysretq
-SYM_CODE_END(fastcall_sysret)
+SYM_CODE_END(fastcall_noop)
 #endif /* CONFIG_FASTCALL */
 
 /*

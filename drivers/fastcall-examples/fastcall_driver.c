@@ -23,6 +23,7 @@ MODULE_DESCRIPTION(
 const void fce_functions_start(void);
 const void fce_noop(void);
 const void fce_stack(void);
+const void fce_write_ptr(void);
 const void fce_functions_end(void);
 
 /*
@@ -31,9 +32,10 @@ const void fce_functions_end(void);
 #define FCE_FUNCTIONS_SIZE                                                     \
 	((unsigned long)(fce_functions_end - fce_functions_start))
 #define NR_FCE_PAGES ((FCE_FUNCTIONS_SIZE - 1) / PAGE_SIZE + 1)
-
-#define FCE_IOCTL_NOOP 0
-#define FCE_IOCTL_STACK 1
+#define FCE_IOCTL_TYPE 0xDE
+#define FCE_IOCTL_NOOP _IO(FCE_IOCTL_TYPE, 0)
+#define FCE_IOCTL_STACK _IO(FCE_IOCTL_TYPE, 1)
+#define FCE_IOCTL_PRIV _IO(FCE_IOCTL_TYPE, 2)
 
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
@@ -64,20 +66,60 @@ static unsigned long function_offset(const void (*fn)(void))
 }
 
 /*
+ * private_example - example for the use of private memory regions for a fastcall
+ */
+static long private_example(void)
+{
+	unsigned long ptr;
+	struct page *page;
+	long ret = -ENOMEM;
+	fastcall_attr attribs = { 0, 0, 0 };
+
+	pr_info("fce: pre alloc");
+
+	page = alloc_page(GFP_FASTCALL);
+	if (!page)
+		goto fail_alloc;
+
+	pr_info("fce: alloc %lx", page);
+	ptr = create_additional_mapping(&page, 1, FASTCALL_VM_RW, false);
+	ret = (long)ptr;
+	if (IS_ERR_VALUE(ptr))
+		goto fail_create;
+
+	pr_info("fce: mapping %lx", ptr);
+	attribs[0] = ptr;
+	ret = register_fastcall(fce_pages, NR_FCE_PAGES,
+				function_offset(fce_write_ptr), attribs);
+
+	pr_info("fce: register %ld", ret);
+	if (ret < 0)
+		remove_additional_mapping(ptr);
+fail_create:
+	__free_page(page);
+fail_alloc:
+	return ret;
+}
+
+/*
  * fce_ioctl() - register the example fastcall specified by cmd
  */
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
-	long ret = -EINVAL;
+	long ret = -ENOIOCTLCMD;
 	fastcall_attr attribs = { 0, 0, 0 };
+
+	pr_info("fce: ioctl");
 
 	switch (cmd) {
 	case FCE_IOCTL_NOOP:
-		return register_fastcall(fce_pages, NR_FCE_PAGES, function_offset(fce_noop),
-					 attribs);
+		return register_fastcall(fce_pages, NR_FCE_PAGES,
+					 function_offset(fce_noop), attribs);
 	case FCE_IOCTL_STACK:
-		return register_fastcall(fce_pages, NR_FCE_PAGES, function_offset(fce_stack),
-					 attribs);
+		return register_fastcall(fce_pages, NR_FCE_PAGES,
+					 function_offset(fce_stack), attribs);
+	case FCE_IOCTL_PRIV:
+		return private_example();
 	}
 
 	return ret;

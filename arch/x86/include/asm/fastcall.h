@@ -35,12 +35,18 @@
 #ifdef CONFIG_FASTCALL
 
 #define GFP_FASTCALL (GFP_HIGHUSER | __GFP_ZERO | __GFP_ACCOUNT)
+#define FASTCALL_VM_RW                                                         \
+	VM_READ | VM_MAYREAD | VM_WRITE | VM_MAYWRITE | VM_SHARED | VM_MAYSHARE
+#define FASTCALL_VM_RX VM_READ | VM_MAYREAD | VM_EXEC | VM_MAYEXEC
 
 typedef long fastcall_attr[NR_FC_ATTRIBS];
 
 extern int setup_fastcall_page(void);
 extern int register_fastcall(struct page **, unsigned long, unsigned long,
 			     fastcall_attr);
+extern unsigned long create_additional_mapping(struct page **, unsigned long,
+					       unsigned long, bool);
+extern void remove_additional_mapping(unsigned long);
 #else
 int setup_fastcall_page(void)
 {

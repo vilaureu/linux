@@ -17,9 +17,6 @@
 
 #define NR_ENTRIES                                                             \
 	((PAGE_SIZE - sizeof(struct mutex)) / sizeof(struct fastcall_entry))
-#define FASTCALL_VM_RW                                                         \
-	VM_READ | VM_MAYREAD | VM_WRITE | VM_MAYWRITE | VM_SHARED | VM_MAYSHARE
-#define FASTCALL_VM_RX VM_READ | VM_MAYREAD | VM_EXEC | VM_MAYEXEC
 
 const void fastcall_noop(void);
 
@@ -87,6 +84,16 @@ static const struct vm_special_mapping fastcall_mapping = {
  */
 static const struct vm_special_mapping function_mapping = {
 	.name = "[fastcall_function]",
+	.mremap = fastcall_mremap,
+	.may_unmap = fastcall_may_unmap,
+	.fault = fastcall_fault,
+};
+
+/*
+ * additional_mapping - mapping for shared or private memory regions
+ */
+static const struct vm_special_mapping additional_mapping = {
+	.name = "[fastcall_additional]",
 	.mremap = fastcall_mremap,
 	.may_unmap = fastcall_may_unmap,
 	.fault = fastcall_fault,
@@ -243,15 +250,15 @@ fail_alloc:
 }
 
 /*
- * unmap_function - unmap fastcall function text pages at this address
+ * remove_mapping - remove a fastcall function or any additional mapping at this address
  */
-static void unmap_function(unsigned long fn_ptr)
+static void remove_mapping(unsigned long ptr)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (vma->vm_start <= fn_ptr && fn_ptr < vma->vm_end)
+		if (vma->vm_start <= ptr && ptr < vma->vm_end)
 			break;
 	}
 
@@ -260,48 +267,61 @@ static void unmap_function(unsigned long fn_ptr)
 
 	// Make do_munmap possible
 	vma->vm_private_data = (void *)&unmappable_mapping;
-	WARN_ON(do_munmap(mm, fn_ptr, vma->vm_end - vma->vm_start, NULL));
+	WARN_ON(do_munmap(mm, ptr, vma->vm_end - vma->vm_start, NULL));
 }
 
 /*
- * install_function_mapping - create and populate a mapping for the function text pages
+ * create_mapping - create and populate a mapping
  *
- * Return the pointer to the first address of the area.
+ * Return a pointer to the first address of the area.
  */
-static unsigned long install_function_mapping(struct page **pages,
-					      unsigned long num)
+static unsigned long create_mapping(struct page **pages, unsigned long num,
+				    unsigned long flags, bool user,
+				    const struct vm_special_mapping *spec)
 {
-	unsigned long fn_ptr;
+	unsigned long ptr;
 	int err;
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	unsigned long len = num * PAGE_SIZE;
 
-	fn_ptr = get_unmapped_area(NULL, 0, len, 0, 0);
-	if (IS_ERR_VALUE(fn_ptr))
-		return fn_ptr;
+	ptr = get_unmapped_area(NULL, 0, len, 0, 0);
+	if (IS_ERR_VALUE(ptr))
+		return ptr;
 
-	// Pages need to be executable also in kernel mode
-	vma = _install_special_mapping(mm, fn_ptr, len, FASTCALL_VM_RX,
-				       &function_mapping);
+	vma = _install_special_mapping(mm, ptr, len, flags, spec);
 	if (IS_ERR(vma))
 		return (unsigned long)vma;
 
-	vma_set_kernel(vma);
+	if (!user)
+		vma_set_kernel(vma);
 
-	err = vm_insert_pages(vma, fn_ptr, pages, &num);
+	err = vm_insert_pages(vma, ptr, pages, &num);
 	if (err) {
-		unmap_function(fn_ptr);
+		remove_mapping(ptr);
 		return err;
 	}
 
-	return fn_ptr;
+	return ptr;
+}
+
+/*
+ * install_function_mapping - create and populate a mapping for the function text pages
+ *
+ * Return a pointer to the first address of the area.
+ */
+static unsigned long install_function_mapping(struct page **pages,
+					      unsigned long num)
+{
+	// Pages need to be executable also in kernel mode
+	return create_mapping(pages, num, FASTCALL_VM_RX, false,
+			      &function_mapping);
 }
 
 /*
  * register_fastcall - registers a new fastcall into the fastcall table
  *
- * @pages   - List of text pages for the fastcall
+ * @pages   - Array of text pages for the fastcall
  * @num     - Number of pages in the attribute pages
  * @off     - Offset of the entry point into the pages
  * @attribs - Additional attributes to put into the fastcall table
@@ -372,7 +392,7 @@ int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
 	mutex_unlock(&table->mutex);
 fail_table_lock:
 	if (ret < 0)
-		unmap_function(fn_ptr);
+		remove_mapping(fn_ptr);
 	kunmap(page);
 	// Marking accessed or dirty is not needed because the pages can not be evicted.
 fail_install_function:
@@ -385,3 +405,43 @@ fail_pin_table:
 	return ret;
 }
 EXPORT_SYMBOL(register_fastcall);
+
+/*
+ * create_additional_mapping - create and populate an additional mapping
+ *
+ * @pages - Array of pages, which will fill the mapping
+ * @num   - Number of pages in the array
+ * @flags - vm_area_struct flags, see FASTCALL_VM_*
+ * @user  - Should the pages be marked as user-accessible
+ *
+ * Return a pointer to the first address of the area.
+ * The mapping can be used for shared or private data.
+ * Remove the mapping with remove_additional_mapping.
+ */
+unsigned long create_additional_mapping(struct page **pages, unsigned long num,
+					unsigned long flags, bool user)
+{
+	struct mm_struct *mm = current->mm;
+	unsigned long ptr;
+
+	if (mmap_write_lock_killable(current->mm))
+		return -EINTR;
+	ptr = create_mapping(pages, num, flags, user, &additional_mapping);
+	mmap_write_unlock(mm);
+	return ptr;
+}
+EXPORT_SYMBOL(create_additional_mapping);
+
+/*
+ * remove_additional_mapping - remove any additional mapping at this address
+ */
+void remove_additional_mapping(unsigned long ptr)
+{
+	struct mm_struct *mm = current->mm;
+
+	if (mmap_write_lock_killable(current->mm))
+		return;
+	remove_additional_mapping(ptr);
+	mmap_write_unlock(mm);
+}
+EXPORT_SYMBOL(remove_additional_mapping);

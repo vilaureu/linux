@@ -12,6 +12,7 @@
 #include <asm/cpufeatures.h>
 #include <asm/fastcall.h>
 
+#define SARG0 (1 * 8)
 #define ARG1 %rsi
 
 /*
@@ -66,6 +67,22 @@ SYM_CODE_START(fce_stack)
 
 	movq %rdi, %rsp
 	sysretq
-SYM_CODE_END(fce_noop)
+SYM_CODE_END(fce_stack)
+
+/*
+ * fce_stack - sysret with the first argument as return value plus 1
+ *
+ * Writes to and reads from the address stored in the first entry attribute.
+ */
+SYM_CODE_START(fce_write_ptr)
+	UNWIND_HINT_EMPTY
+
+	movq SARG0(%rax), %rdi
+	movq ARG1, (%rdi)
+	movq (%rdi), %rax
+	addq $1, %rax
+
+	sysretq
+SYM_CODE_END(fce_write_ptr)
 
 SYM_INNER_LABEL(fce_functions_end, SYM_L_GLOBAL)

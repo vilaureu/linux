@@ -187,8 +187,6 @@ static int insert_table(struct mm_struct *mm)
 	ret = 0;
 
 fail_insert:
-	if (ret < 0)
-		remove_mapping(FASTCALL_ADDR);
 fail_create:
 	if (ret < 0)
 		// Destroy mutex for mutex debugging (CONFIG_DEBUG_MUTEXES)

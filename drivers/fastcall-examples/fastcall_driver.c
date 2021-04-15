@@ -9,6 +9,7 @@
 #include <linux/mm.h>
 #include <linux/highmem.h>
 #include <linux/minmax.h>
+#include <linux/slab.h>
 #include <asm/fastcall.h>
 #include <asm/pgtable.h>
 
@@ -16,6 +17,19 @@ MODULE_DESCRIPTION(
 	"An example device driver which adds some fastcalls for testing and benchmarking.");
 
 #define FCE_DEVICE_NAME "fastcall-examples"
+
+/*
+ * ioctl_args - information returned from the fastcall-examples ioctl handlers
+ *
+ * @addr  - Start of the function mapping
+ * @len   - Length of the function mapping
+ * @index - Index of the function in the fastcall table
+ */
+struct ioctl_args {
+	unsigned long addr;
+	unsigned long len;
+	unsigned index;
+};
 
 /*
  * Function labels from fastcall_functions.S.
@@ -32,10 +46,10 @@ const void fce_functions_end(void);
 #define FCE_FUNCTIONS_SIZE                                                     \
 	((unsigned long)(fce_functions_end - fce_functions_start))
 #define NR_FCE_PAGES ((FCE_FUNCTIONS_SIZE - 1) / PAGE_SIZE + 1)
-#define FCE_IOCTL_TYPE 0xDE
-#define FCE_IOCTL_NOOP _IO(FCE_IOCTL_TYPE, 0)
-#define FCE_IOCTL_STACK _IO(FCE_IOCTL_TYPE, 1)
-#define FCE_IOCTL_PRIV _IO(FCE_IOCTL_TYPE, 2)
+#define FCE_IOCTL(cmd) (_IOR(0xDE, cmd, struct ioctl_args))
+#define FCE_IOCTL_NOOP (FCE_IOCTL(0))
+#define FCE_IOCTL_STACK (FCE_IOCTL(1))
+#define FCE_IOCTL_PRIV (FCE_IOCTL(2))
 
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
@@ -58,6 +72,49 @@ static int fce_open(struct inode *inode, struct file *file)
 }
 
 /*
+ * register_and_copy - registers a fastcall function and copies the ioctl_args to user space
+ *
+ * Return negative error number, 0 on success and 
+ * 1 if the registration succeeded and the copy operation failed.
+ *
+ * In the last case, the user program has to locate the function mapping itself afterwards,
+ * if it wants to deregister the function.
+ */
+static int register_and_copy(struct fastcall_reg_args reg_args,
+			     unsigned long args)
+{
+	int ret;
+	struct ioctl_args *io_args;
+
+	// Use zeroed memory to prevent information leaks.
+	io_args = kzalloc(sizeof(struct ioctl_args), GFP_KERNEL);
+	ret = -ENOMEM;
+	if (!io_args)
+		goto fail_alloc;
+
+	ret = register_fastcall(&reg_args);
+	if (ret < 0)
+		goto fail_register;
+
+	io_args->addr = reg_args.fn_addr;
+	io_args->len = NR_FCE_PAGES * PAGE_SIZE;
+	io_args->index = reg_args.index;
+
+	ret = 1;
+	if (copy_to_user((void *)args, io_args, sizeof(struct ioctl_args)))
+		goto fail_copy;
+
+	ret = 0;
+
+fail_copy:
+	// Do not undo the registration. This could result in race conditions with other memory mappings.
+fail_register:
+	kfree(io_args);
+fail_alloc:
+	return ret;
+}
+
+/*
  * function_offset - return the offset of the function into the containing page
  */
 static unsigned long function_offset(const void (*fn)(void))
@@ -68,12 +125,12 @@ static unsigned long function_offset(const void (*fn)(void))
 /*
  * private_example - example for the use of private memory regions for a fastcall
  */
-static long private_example(void)
+static long private_example(unsigned long args)
 {
 	unsigned long ptr;
 	struct page *page;
 	long ret = -ENOMEM;
-	struct fastcall_reg_args args = {
+	struct fastcall_reg_args reg_args = {
 		.pages = fce_pages,
 		.num = NR_FCE_PAGES,
 		.off = function_offset(fce_write_ptr),
@@ -89,11 +146,8 @@ static long private_example(void)
 	if (IS_ERR_VALUE(ptr))
 		goto fail_create;
 
-	args.attribs[0] = ptr;
-	ret = register_fastcall(&args);
-
-	if (ret == 0)
-		ret = args.index;
+	reg_args.attribs[0] = ptr;
+	ret = register_and_copy(reg_args, args);
 
 	if (ret < 0)
 		remove_additional_mapping(ptr);
@@ -118,18 +172,18 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 	switch (cmd) {
 	case FCE_IOCTL_NOOP:
 		reg_args.off = function_offset(fce_noop);
-		ret = register_fastcall(&reg_args);
+		ret = register_and_copy(reg_args, args);
 		break;
 	case FCE_IOCTL_STACK:
 		reg_args.off = function_offset(fce_stack);
-		ret = register_fastcall(&reg_args);
+		ret = register_and_copy(reg_args, args);
 		break;
 	case FCE_IOCTL_PRIV:
-		ret = private_example();
+		ret = private_example(args);
 		break;
 	}
 
-	return ret;
+	return ret == 1 ? -EFAULT : ret;
 }
 
 /*

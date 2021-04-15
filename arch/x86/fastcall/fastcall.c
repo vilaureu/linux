@@ -381,7 +381,7 @@ int register_fastcall(struct fastcall_reg_args *args)
 		ret = (long)fn_ptr;
 		goto fail_install_function;
 	}
-	args->fn_ptr = fn_ptr;
+	args->fn_addr = fn_ptr;
 	fn_ptr += args->off;
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);

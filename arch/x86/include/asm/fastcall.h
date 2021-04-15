@@ -49,7 +49,7 @@ typedef long fastcall_attr[NR_FC_ATTRIBS];
  * @num     - Number of pages in the attribute pages
  * @off     - Offset of the entry point into the pages
  * @attribs - Additional attributes to put into the fastcall table
- * @fn_ptr  - Output for a pointer to the function mapping
+ * @fn_ptr  - Output for the address to the function mapping
  * @index   - Output for the index of the new table entry
  */
 struct fastcall_reg_args {
@@ -57,7 +57,7 @@ struct fastcall_reg_args {
 	unsigned long num;
 	unsigned long off;
 	fastcall_attr attribs;
-	unsigned long fn_ptr;
+	unsigned long fn_addr;
 	unsigned index;
 };
 

@@ -350,17 +350,11 @@ static unsigned long install_function_mapping(struct page **pages,
 /*
  * register_fastcall - registers a new fastcall into the fastcall table
  *
- * @pages   - Array of text pages for the fastcall
- * @num     - Number of pages in the attribute pages
- * @off     - Offset of the entry point into the pages
- * @attribs - Additional attributes to put into the fastcall table
- *
  * This creates a new fastcall table and stack if needed.
  * Then the fastcall code is mapped to user space.
  * Finally, the function pointer is inserted into the fastcall table.
  */
-int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
-		      fastcall_attr attribs)
+int register_fastcall(struct fastcall_reg_args *args)
 {
 	int ret = 0;
 	size_t i;
@@ -369,7 +363,7 @@ int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
 	struct fastcall_table *table;
 	unsigned long fn_ptr;
 
-	BUG_ON(num * PAGE_SIZE <= off);
+	BUG_ON(args->num * PAGE_SIZE <= args->off);
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
@@ -382,12 +376,13 @@ int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
 	if (ret < 0)
 		goto fail_create_stacks;
 
-	fn_ptr = install_function_mapping(pages, num);
+	fn_ptr = install_function_mapping(args->pages, args->num);
 	if (IS_ERR_VALUE(fn_ptr)) {
 		ret = (long)fn_ptr;
 		goto fail_install_function;
 	}
-	fn_ptr += off;
+	args->fn_ptr = fn_ptr;
+	fn_ptr += args->off;
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
 	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);
@@ -407,16 +402,18 @@ int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
 			continue;
 
 		for (j = 0; j < NR_FC_ATTRIBS; j++) {
-			entry->attribs[j] = attribs[j];
+			entry->attribs[j] = args->attribs[j];
 		}
 		// Guarantee that a fastcall system call sees the attribs above when it reads this fn_ptr
 		smp_store_release(&entry->fn_ptr, (void *)fn_ptr);
-		ret = i;
+		ret = 0;
 		break;
 	}
 
-	if (i == NR_ENTRIES)
+	if (i >= NR_ENTRIES)
 		ret = -EINVAL; // The fastcall table is full
+
+	args->index = i;
 
 	mutex_unlock(&table->mutex);
 fail_table_lock:

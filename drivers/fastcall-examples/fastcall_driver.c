@@ -73,7 +73,12 @@ static long private_example(void)
 	unsigned long ptr;
 	struct page *page;
 	long ret = -ENOMEM;
-	fastcall_attr attribs = { 0, 0, 0 };
+	struct fastcall_reg_args args = {
+		.pages = fce_pages,
+		.num = NR_FCE_PAGES,
+		.off = function_offset(fce_write_ptr),
+		.attribs = { 0, 0, 0 },
+	};
 
 	page = alloc_page(GFP_FASTCALL);
 	if (!page)
@@ -84,9 +89,11 @@ static long private_example(void)
 	if (IS_ERR_VALUE(ptr))
 		goto fail_create;
 
-	attribs[0] = ptr;
-	ret = register_fastcall(fce_pages, NR_FCE_PAGES,
-				function_offset(fce_write_ptr), attribs);
+	args.attribs[0] = ptr;
+	ret = register_fastcall(&args);
+
+	if (ret == 0)
+		ret = args.index;
 
 	if (ret < 0)
 		remove_additional_mapping(ptr);
@@ -102,17 +109,24 @@ fail_alloc:
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -ENOIOCTLCMD;
-	fastcall_attr attribs = { 0, 0, 0 };
+	struct fastcall_reg_args reg_args = {
+		.pages = fce_pages,
+		.num = NR_FCE_PAGES,
+		.attribs = { 0, 0, 0 },
+	};
 
 	switch (cmd) {
 	case FCE_IOCTL_NOOP:
-		return register_fastcall(fce_pages, NR_FCE_PAGES,
-					 function_offset(fce_noop), attribs);
+		reg_args.off = function_offset(fce_noop);
+		ret = register_fastcall(&reg_args);
+		break;
 	case FCE_IOCTL_STACK:
-		return register_fastcall(fce_pages, NR_FCE_PAGES,
-					 function_offset(fce_stack), attribs);
+		reg_args.off = function_offset(fce_stack);
+		ret = register_fastcall(&reg_args);
+		break;
 	case FCE_IOCTL_PRIV:
-		return private_example();
+		ret = private_example();
+		break;
 	}
 
 	return ret;
@@ -129,9 +143,11 @@ static int __init fce_init(void)
 	size_t count;
 	void *addr;
 	// TODO implement close to deregister fastcalls
-	static struct file_operations fops = { .owner = THIS_MODULE,
-					       .open = fce_open,
-					       .unlocked_ioctl = fce_ioctl };
+	static struct file_operations fops = {
+		.owner = THIS_MODULE,
+		.open = fce_open,
+		.unlocked_ioctl = fce_ioctl,
+	};
 
 	// Allocate pages for example function and copy them
 	BUG_ON(NR_FCE_PAGES != sizeof(fce_pages) / sizeof(struct page *));

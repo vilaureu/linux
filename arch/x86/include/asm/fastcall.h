@@ -42,9 +42,27 @@
 
 typedef long fastcall_attr[NR_FC_ATTRIBS];
 
+/*
+ * fastcall_reg_attribs - attributes passed in and out for register_fastcall
+ *
+ * @pages   - Array of text pages for the fastcall
+ * @num     - Number of pages in the attribute pages
+ * @off     - Offset of the entry point into the pages
+ * @attribs - Additional attributes to put into the fastcall table
+ * @fn_ptr  - Output for a pointer to the function mapping
+ * @index   - Output for the index of the new table entry
+ */
+struct fastcall_reg_args {
+	struct page **pages;
+	unsigned long num;
+	unsigned long off;
+	fastcall_attr attribs;
+	unsigned long fn_ptr;
+	unsigned index;
+};
+
 extern int setup_fastcall_page(void);
-extern int register_fastcall(struct page **, unsigned long, unsigned long,
-			     fastcall_attr);
+extern int register_fastcall(struct fastcall_reg_args *);
 extern unsigned long create_additional_mapping(struct page **, unsigned long,
 					       unsigned long, bool);
 extern void remove_additional_mapping(unsigned long);

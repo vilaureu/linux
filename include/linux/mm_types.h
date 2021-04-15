@@ -754,6 +754,8 @@ enum vm_fault_reason {
 struct vm_special_mapping {
 	const char *name;	/* The name, e.g. "[vdso]". */
 
+	void *priv; /* Private data */
+
 	/*
 	 * If .fault is not provided, this points to a
 	 * NULL-terminated array of pages that back the special mapping.
@@ -778,6 +780,8 @@ struct vm_special_mapping {
 	 * the mapping will not be unmapped.
 	 */
 	int (*may_unmap)(const struct vm_special_mapping *sm,
+				struct vm_area_struct *area);
+	void (*close)(const struct vm_special_mapping *sm,
 				struct vm_area_struct *area);
 };
 

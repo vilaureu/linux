@@ -25,7 +25,7 @@
 	static const struct vm_special_mapping NAME##_mapping = {              \
 		.name = "[fastcall_" #NAME "]",                                \
 		.mremap = fastcall_mremap,                                     \
-		.may_unmap = fastcall_may_unmap,                               \
+		.may_unmap = fastcall_no_unmap,                                \
 		.fault = fastcall_fault,                                       \
 	};
 
@@ -57,10 +57,10 @@ static int fastcall_mremap(const struct vm_special_mapping *sm,
 }
 
 /*
- * fastcall_may_unmap - prohibit unmapping the fastcall pages
+ * fastcall_no_unmap - prohibit unmapping the fastcall pages
  */
-static int fastcall_may_unmap(const struct vm_special_mapping *sm,
-			      struct vm_area_struct *vma)
+static int fastcall_no_unmap(const struct vm_special_mapping *sm,
+			     struct vm_area_struct *vma)
 {
 	return -EACCES;
 }
@@ -89,11 +89,6 @@ SPECIAL_MAPPING(table)
  * table_mapping - mapping for the fastcall stacks
  */
 SPECIAL_MAPPING(stacks)
-
-/*
- * function_mapping - mapping for the fastcall function code provided by the driver
- */
-SPECIAL_MAPPING(function)
 
 /*
  * additional_mapping - mapping for shared or private memory regions
@@ -141,14 +136,18 @@ static void remove_mapping(unsigned long addr)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
+	struct vm_special_mapping *sm;
 
 	vma = find_vma_containing(mm, addr);
 
 	if (WARN_ON(!vma))
 		return;
 
-	// Make do_munmap possible
-	vma->vm_private_data = (void *)&unmappable_mapping;
+	sm = vma->vm_private_data;
+	if (sm->may_unmap == fastcall_no_unmap)
+		// Make do_munmap possible
+		vma->vm_private_data = (void *)&unmappable_mapping;
+
 	WARN_ON(do_munmap(mm, addr, vma->vm_end - vma->vm_start, NULL));
 }
 
@@ -308,30 +307,54 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 				    unsigned long flags, bool user,
 				    const struct vm_special_mapping *spec)
 {
-	unsigned long ptr;
+	unsigned long addr;
 	int err;
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	unsigned long len = num * PAGE_SIZE;
 
-	ptr = get_unmapped_area(NULL, 0, len, 0, 0);
-	if (IS_ERR_VALUE(ptr))
-		return ptr;
+	addr = get_unmapped_area(NULL, 0, len, 0, 0);
+	if (IS_ERR_VALUE(addr))
+		return addr;
 
-	vma = _install_special_mapping(mm, ptr, len, flags, spec);
+	vma = _install_special_mapping(mm, addr, len, flags, spec);
 	if (IS_ERR(vma))
 		return (unsigned long)vma;
 
 	if (!user)
 		vma_set_kernel(vma);
 
-	err = vm_insert_pages(vma, ptr, pages, &num);
+	err = vm_insert_pages(vma, addr, pages, &num);
 	if (err) {
-		remove_mapping(ptr);
+		remove_mapping(addr);
 		return err;
 	}
 
-	return ptr;
+	return addr;
+}
+
+/*
+ * fastcall_function_close - free private vma ressources
+ *
+ * This is called on process exit and munmap.
+ */
+static void fastcall_function_close(const struct vm_special_mapping *sm,
+				    struct vm_area_struct *vma)
+{
+	kfree(sm);
+}
+
+/*
+ * fastcall_function_unmap - remove the function from the fastcall table and free associated mappings
+ */
+static int fastcall_function_unmap(const struct vm_special_mapping *sm,
+				   struct vm_area_struct *vma)
+{
+	/* Prevent fastcall_function_unmap from beeing called twice when munmap fails later on
+	   and the process retries munmap. */
+	vma->vm_private_data = (void *)&unmappable_mapping;
+	fastcall_function_close(sm, vma);
+	return 0;
 }
 
 /*
@@ -342,9 +365,30 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 static unsigned long install_function_mapping(struct page **pages,
 					      unsigned long num)
 {
+	unsigned long addr;
+	struct vm_special_mapping *sm;
+
+	sm = kmalloc(sizeof(struct vm_special_mapping), GFP_KERNEL);
+	addr = -ENOMEM;
+	if (!sm)
+		goto fail_alloc;
+
+	sm->name = "[fastcall_function]";
+	sm->mremap = fastcall_mremap;
+	sm->may_unmap = fastcall_function_unmap;
+	sm->close = fastcall_function_close;
+	sm->fault = fastcall_fault;
+
 	// Pages need to be executable also in kernel mode
-	return create_mapping(pages, num, FASTCALL_VM_RX, false,
-			      &function_mapping);
+	addr = create_mapping(pages, num, FASTCALL_VM_RX, false, sm);
+	if (IS_ERR_VALUE(addr))
+		goto fail_create;
+
+fail_create:
+	if (IS_ERR_VALUE(addr))
+		kfree(sm);
+fail_alloc:
+	return addr;
 }
 
 /*

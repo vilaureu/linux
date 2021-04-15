@@ -17,6 +17,17 @@
 
 #define NR_ENTRIES                                                             \
 	((PAGE_SIZE - sizeof(struct mutex)) / sizeof(struct fastcall_entry))
+/*
+ * SPECIAL_MAPPING - create a special fastcall mapping, 
+ *                   which can not be unmapped
+ */
+#define SPECIAL_MAPPING(NAME)                                                  \
+	static const struct vm_special_mapping NAME##_mapping = {              \
+		.name = "[fastcall_" #NAME "]",                                \
+		.mremap = fastcall_mremap,                                     \
+		.may_unmap = fastcall_may_unmap,                               \
+		.fault = fastcall_fault,                                       \
+	};
 
 const void fastcall_noop(void);
 
@@ -68,36 +79,26 @@ static vm_fault_t fastcall_fault(const struct vm_special_mapping *sm,
 }
 
 /*
- * fastcall_mapping - mapping for the fastcall table and stack pages
+ * table_mapping - mapping for the fastcall table
  *
  * TODO mutex_destroy for CONFIG_DEBUG_MUTEXES
  */
-static const struct vm_special_mapping fastcall_mapping = {
-	.name = "[fastcall]",
-	.mremap = fastcall_mremap,
-	.may_unmap = fastcall_may_unmap,
-	.fault = fastcall_fault,
-};
+SPECIAL_MAPPING(table)
+
+/*
+ * table_mapping - mapping for the fastcall stacks
+ */
+SPECIAL_MAPPING(stacks)
 
 /*
  * function_mapping - mapping for the fastcall function code provided by the driver
  */
-static const struct vm_special_mapping function_mapping = {
-	.name = "[fastcall_function]",
-	.mremap = fastcall_mremap,
-	.may_unmap = fastcall_may_unmap,
-	.fault = fastcall_fault,
-};
+SPECIAL_MAPPING(function)
 
 /*
  * additional_mapping - mapping for shared or private memory regions
  */
-static const struct vm_special_mapping additional_mapping = {
-	.name = "[fastcall_additional]",
-	.mremap = fastcall_mremap,
-	.may_unmap = fastcall_may_unmap,
-	.fault = fastcall_fault,
-};
+SPECIAL_MAPPING(additional)
 
 /*
  * unmappable_mapping - a temporary mapping that allows function pages to be unmapped
@@ -115,6 +116,58 @@ void vma_set_kernel(struct vm_area_struct *vma)
 {
 	pgprotval_t pgval = pgprot_val(vma->vm_page_prot) & ~(_PAGE_USER);
 	WRITE_ONCE(vma->vm_page_prot, __pgprot(pgval));
+}
+
+/*
+ * find_vma_containing - find a vma containing the address
+ *
+ * Return NULL if the vma is not found.
+ */
+static struct vm_area_struct *find_vma_containing(struct mm_struct *mm,
+						  unsigned long addr)
+{
+	struct vm_area_struct *vma = find_vma(mm, addr);
+
+	if (vma && vma->vm_start <= addr)
+		return vma;
+	else
+		return NULL;
+}
+
+/*
+ * remove_mapping - remove a fastcall function or any additional mapping at this address
+ */
+static void remove_mapping(unsigned long addr)
+{
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma;
+
+	vma = find_vma_containing(mm, addr);
+
+	if (WARN_ON(!vma))
+		return;
+
+	// Make do_munmap possible
+	vma->vm_private_data = (void *)&unmappable_mapping;
+	WARN_ON(do_munmap(mm, addr, vma->vm_end - vma->vm_start, NULL));
+}
+
+/*
+ * create_table_mapping - Install the mapping for the fastcall table.
+ */
+static struct vm_area_struct *create_table_mapping(struct mm_struct *mm)
+{
+	struct vm_area_struct *vma;
+
+	vma = _install_special_mapping(mm, FASTCALL_ADDR, PAGE_SIZE,
+				       FASTCALL_VM_RO | VM_DONTCOPY,
+				       &table_mapping);
+	if (WARN_ON(IS_ERR(vma)))
+		return vma;
+
+	vma_set_kernel(vma);
+
+	return vma;
 }
 
 /*
@@ -151,82 +204,132 @@ int setup_fastcall_page(void)
 	mutex_init(&table->mutex);
 	for (i = 0; i < NR_ENTRIES; i++)
 		table->entries[i].fn_ptr = (void *)fastcall_noop;
-	kunmap(page);
 
 	if (mmap_write_lock_killable(mm)) {
 		ret = -EINTR;
 		goto fail_lock;
 	}
 
-	vma = _install_special_mapping(mm, FC_STACK_BOTTOM,
-				       NR_FC_PAGES * PAGE_SIZE, FASTCALL_VM_RW,
-				       &fastcall_mapping);
-	if (WARN_ON(IS_ERR(vma))) {
-		ret = PTR_ERR(vma);
-		goto fail_install;
-	}
-
-	vma_set_kernel(vma);
+	// The fastcall table is copied manually on fork. So do not copy automatically.
+	vma = create_table_mapping(mm);
+	ret = PTR_ERR(vma);
+	if (IS_ERR(vma))
+		goto fail_create;
 
 	ret = vm_insert_page(vma, FASTCALL_ADDR, page);
 	if (WARN_ON(ret < 0)) {
-		do_munmap(mm, FC_STACK_TOP, NR_FC_EXTRA_PAGES * PAGE_SIZE,
-			  NULL);
+		remove_mapping(FASTCALL_ADDR);
 	}
 
-fail_install:
+fail_create:
 	mmap_write_unlock(mm);
 	if (ret < 0) {
-		table = kmap(page);
 		// Destroy mutex for mutex debugging (CONFIG_DEBUG_MUTEXES)
 		mutex_destroy(&table->mutex);
-		kunmap(page);
 	}
 fail_lock:
+	kunmap(page);
 	__free_page(page);
 
 	return ret;
 }
 
-/*
- * find_fastcall_vma - find the vma containing the fastcall pages
- */
-static struct vm_area_struct *find_fastcall_vma(void)
+int fastcall_dup_table(struct mm_struct *oldmm, struct mm_struct *mm)
 {
-	struct mm_struct *mm = current->mm;
-	struct vm_area_struct *vma;
+	int ret;
+	struct vm_area_struct *oldvma, *vma;
+	struct page *oldpage, *page;
+	struct fastcall_table *table, *oldtable;
 
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (!vma_is_special_mapping(vma, &fastcall_mapping))
-			continue;
+	// Do not duplicate table for kernel threads or swapper
+	if (!mm || !oldmm || current->pid == 0)
+		return 0;
 
-		return vma;
-	}
+	oldvma = find_vma_containing(oldmm, FASTCALL_ADDR);
+	ret = -EFAULT;
+	if (WARN_ON(!oldvma))
+		goto fail_oldvma;
 
-	// No fastcall mapping was found in the process.
-	BUG();
+	page = alloc_page(GFP_FASTCALL);
+	ret = -ENOMEM;
+	if (!page)
+		goto fail_alloc;
+
+	oldpage = follow_page(oldvma, FASTCALL_ADDR, FOLL_GET);
+	ret = -EFAULT;
+	if (WARN_ON(IS_ERR_OR_NULL(oldpage)))
+		goto fail_follow;
+
+	table = kmap(page);
+	oldtable = kmap(oldpage);
+	// Lock the table to prevent concurrent modifications
+	ret = -EINTR;
+	if (mutex_lock_killable(&oldtable->mutex))
+		goto fail_table_lock;
+
+	memcpy(table, oldtable, PAGE_SIZE);
+	// Create a new, unlocked mutex
+	mutex_init(&table->mutex);
+
+	// Replace the clone with an actual copy
+	vma = create_table_mapping(mm);
+	ret = PTR_ERR(vma);
+	if (IS_ERR(vma))
+		goto fail_create;
+
+	ret = vm_insert_page(vma, FASTCALL_ADDR, page);
+	if (WARN_ON(ret < 0))
+		goto fail_insert;
+
+	ret = 0;
+
+fail_insert:
+fail_create:
+	if (ret < 0)
+		mutex_destroy(&table->mutex);
+	mutex_unlock(&oldtable->mutex);
+fail_table_lock:
+	kunmap(oldpage);
+	kunmap(page);
+	put_page(oldpage);
+fail_follow:
+	__free_page(page);
+fail_alloc:
+fail_oldvma:
+	return ret;
 }
 
 /*
- * create_fastcall_stacks - create per-CPU fastcall stacks
+ * create_stacks - create per-CPU fastcall stacks
  *
  * No operation is performed when the stacks are already created.
  */
-static int create_fastcall_stacks(void)
+static int create_stacks(void)
 {
-	int err = 0;
+	int err;
 	struct page **pages;
 	unsigned long num = nr_cpu_ids;
-	struct vm_area_struct *vma = find_fastcall_vma();
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma =
+		find_vma_containing(current->mm, FC_STACK_BOTTOM);
 	int i;
 
-	if (!IS_ERR_OR_NULL(follow_page(vma, FC_STACK_BOTTOM, 0)))
+	if (vma)
 		return 0;
 
+	vma = _install_special_mapping(mm, FC_STACK_BOTTOM,
+				       nr_cpu_ids * PAGE_SIZE, FASTCALL_VM_RW,
+				       &stacks_mapping);
+	err = PTR_ERR(vma);
+	if (WARN_ON(IS_ERR(vma)))
+		goto fail_install;
+
+	vma_set_kernel(vma);
+
 	pages = kmalloc(nr_cpu_ids * sizeof(struct page *), GFP_KERNEL);
-	if (!pages) {
-		return -ENOMEM;
-	}
+	err = -ENOMEM;
+	if (!pages)
+		goto fail_malloc;
 
 	for (i = 0; i < nr_cpu_ids; i++) {
 		pages[i] = alloc_page(GFP_FASTCALL);
@@ -238,36 +341,21 @@ static int create_fastcall_stacks(void)
 
 	err = vm_insert_pages(vma, FC_STACK_BOTTOM, pages, &num);
 	if (err < 0)
-		zap_page_range(vma, FC_STACK_BOTTOM,
-			       (nr_cpu_ids - num) * PAGE_SIZE);
+		goto fail_insert;
 
+	err = 0;
+
+fail_insert:
+	// The pages are removed with remove_mapping anyway; no need to zap
 fail_alloc:
 	for (i--; i >= 0; i--)
 		__free_page(pages[i]);
 	kfree(pages);
-
+fail_malloc:
+	if (err < 0)
+		remove_mapping(FC_STACK_BOTTOM);
+fail_install:
 	return err;
-}
-
-/*
- * remove_mapping - remove a fastcall function or any additional mapping at this address
- */
-static void remove_mapping(unsigned long ptr)
-{
-	struct mm_struct *mm = current->mm;
-	struct vm_area_struct *vma;
-
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (vma->vm_start <= ptr && ptr < vma->vm_end)
-			break;
-	}
-
-	if (WARN_ON(!vma))
-		return;
-
-	// Make do_munmap possible
-	vma->vm_private_data = (void *)&unmappable_mapping;
-	WARN_ON(do_munmap(mm, ptr, vma->vm_end - vma->vm_start, NULL));
 }
 
 /*
@@ -349,7 +437,7 @@ int register_fastcall(struct page **pages, unsigned long num, unsigned long off,
 	if (ret < 0)
 		goto fail_pin_table;
 
-	ret = create_fastcall_stacks();
+	ret = create_stacks();
 	if (ret < 0)
 		goto fail_create_stacks;
 
@@ -441,7 +529,7 @@ void remove_additional_mapping(unsigned long ptr)
 
 	if (mmap_write_lock_killable(current->mm))
 		return;
-	remove_additional_mapping(ptr);
+	remove_mapping(ptr);
 	mmap_write_unlock(mm);
 }
 EXPORT_SYMBOL(remove_additional_mapping);

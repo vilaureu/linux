@@ -75,24 +75,19 @@ static long private_example(void)
 	long ret = -ENOMEM;
 	fastcall_attr attribs = { 0, 0, 0 };
 
-	pr_info("fce: pre alloc");
-
 	page = alloc_page(GFP_FASTCALL);
 	if (!page)
 		goto fail_alloc;
 
-	pr_info("fce: alloc %lx", page);
 	ptr = create_additional_mapping(&page, 1, FASTCALL_VM_RW, false);
 	ret = (long)ptr;
 	if (IS_ERR_VALUE(ptr))
 		goto fail_create;
 
-	pr_info("fce: mapping %lx", ptr);
 	attribs[0] = ptr;
 	ret = register_fastcall(fce_pages, NR_FCE_PAGES,
 				function_offset(fce_write_ptr), attribs);
 
-	pr_info("fce: register %ld", ret);
 	if (ret < 0)
 		remove_additional_mapping(ptr);
 fail_create:
@@ -108,8 +103,6 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -ENOIOCTLCMD;
 	fastcall_attr attribs = { 0, 0, 0 };
-
-	pr_info("fce: ioctl");
 
 	switch (cmd) {
 	case FCE_IOCTL_NOOP:
@@ -135,7 +128,7 @@ static int __init fce_init(void)
 	int result, page_id;
 	size_t count;
 	void *addr;
-	// TODO implement close to unregister fastcalls
+	// TODO implement close to deregister fastcalls
 	static struct file_operations fops = { .owner = THIS_MODULE,
 					       .open = fce_open,
 					       .unlocked_ioctl = fce_ioctl };

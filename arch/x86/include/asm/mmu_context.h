@@ -12,7 +12,6 @@
 #include <asm/tlbflush.h>
 #include <asm/paravirt.h>
 #include <asm/debugreg.h>
-#include <asm/fastcall.h>
 
 extern atomic64_t last_mm_ctx_id;
 
@@ -164,6 +163,15 @@ static inline void arch_dup_pkeys(struct mm_struct *oldmm,
 	mm->context.execute_only_pkey   = oldmm->context.execute_only_pkey;
 #endif
 }
+
+#ifdef CONFIG_FASTCALL
+extern int fastcall_dup_table(struct mm_struct *, struct mm_struct *);
+#else
+int fastcall_dup_table(struct mm_struct *, struct mm_struct *)
+{
+	return 0;
+}
+#endif
 
 static inline int arch_dup_mmap(struct mm_struct *oldmm, struct mm_struct *mm)
 {

@@ -153,21 +153,50 @@ static void remove_mapping(unsigned long addr)
 }
 
 /*
- * create_table_mapping - Install the mapping for the fastcall table.
+ * insert_table - Insert the mapping for the fastcall table.
  */
-static struct vm_area_struct *create_table_mapping(struct mm_struct *mm)
+static int insert_table(struct mm_struct *mm)
 {
+	int ret = 0;
+	size_t i;
 	struct vm_area_struct *vma;
+	struct page *page;
+	struct fastcall_table *table;
+
+	page = alloc_page(GFP_FASTCALL);
+	if (!page)
+		return -ENOMEM;
+
+	table = kmap(page);
+	mutex_init(&table->mutex);
+	for (i = 0; i < NR_ENTRIES; i++)
+		table->entries[i].fn_ptr = (void *)fastcall_noop;
 
 	vma = _install_special_mapping(mm, FASTCALL_ADDR, PAGE_SIZE,
-				       FASTCALL_VM_RO | VM_DONTCOPY,
-				       &table_mapping);
-	if (WARN_ON(IS_ERR(vma)))
-		return vma;
+				       FASTCALL_VM_RO, &table_mapping);
+	ret = PTR_ERR(vma);
+	if (IS_ERR(vma))
+		goto fail_create;
 
 	vma_set_kernel(vma);
 
-	return vma;
+	ret = vm_insert_page(vma, FASTCALL_ADDR, page);
+	if (WARN_ON(ret < 0))
+		goto fail_insert;
+
+	ret = 0;
+
+fail_insert:
+	if (ret < 0)
+		remove_mapping(FASTCALL_ADDR);
+fail_create:
+	if (ret < 0)
+		// Destroy mutex for mutex debugging (CONFIG_DEBUG_MUTEXES)
+		mutex_destroy(&table->mutex);
+	kunmap(page);
+	__free_page(page);
+
+	return ret;
 }
 
 /*
@@ -189,120 +218,33 @@ static struct vm_area_struct *create_table_mapping(struct mm_struct *mm)
  */
 int setup_fastcall_page(void)
 {
-	int ret = 0;
-	size_t i;
-	struct vm_area_struct *vma;
+	int ret;
 	struct mm_struct *mm = current->mm;
-	struct page *page;
-	struct fastcall_table *table;
 
-	page = alloc_page(GFP_FASTCALL);
-	if (!page)
-		return -ENOMEM;
-
-	table = kmap(page);
-	mutex_init(&table->mutex);
-	for (i = 0; i < NR_ENTRIES; i++)
-		table->entries[i].fn_ptr = (void *)fastcall_noop;
-
-	if (mmap_write_lock_killable(mm)) {
-		ret = -EINTR;
-		goto fail_lock;
-	}
-
-	// The fastcall table is copied manually on fork. So do not copy automatically.
-	vma = create_table_mapping(mm);
-	ret = PTR_ERR(vma);
-	if (IS_ERR(vma))
-		goto fail_create;
-
-	ret = vm_insert_page(vma, FASTCALL_ADDR, page);
-	if (WARN_ON(ret < 0)) {
-		remove_mapping(FASTCALL_ADDR);
-	}
-
-fail_create:
+	if (mmap_write_lock_killable(mm))
+		return -EINTR;
+	ret = insert_table(mm);
 	mmap_write_unlock(mm);
-	if (ret < 0) {
-		// Destroy mutex for mutex debugging (CONFIG_DEBUG_MUTEXES)
-		mutex_destroy(&table->mutex);
-	}
-fail_lock:
-	kunmap(page);
-	__free_page(page);
-
 	return ret;
 }
 
+/*
+ * fastcall_dup_table - create a new, empty fastcall table in the child process of a fork
+ */
 int fastcall_dup_table(struct mm_struct *oldmm, struct mm_struct *mm)
 {
-	int ret;
-	struct vm_area_struct *oldvma, *vma;
-	struct page *oldpage, *page;
-	struct fastcall_table *table, *oldtable;
-
-	// Do not duplicate table for kernel threads or swapper
+	// Do not create table for kernel threads or swapper
 	if (!mm || !oldmm || current->pid == 0)
 		return 0;
 
-	oldvma = find_vma_containing(oldmm, FASTCALL_ADDR);
-	ret = -EFAULT;
-	if (WARN_ON(!oldvma))
-		goto fail_oldvma;
-
-	page = alloc_page(GFP_FASTCALL);
-	ret = -ENOMEM;
-	if (!page)
-		goto fail_alloc;
-
-	oldpage = follow_page(oldvma, FASTCALL_ADDR, FOLL_GET);
-	ret = -EFAULT;
-	if (WARN_ON(IS_ERR_OR_NULL(oldpage)))
-		goto fail_follow;
-
-	table = kmap(page);
-	oldtable = kmap(oldpage);
-	// Lock the table to prevent concurrent modifications
-	ret = -EINTR;
-	if (mutex_lock_killable(&oldtable->mutex))
-		goto fail_table_lock;
-
-	memcpy(table, oldtable, PAGE_SIZE);
-	// Create a new, unlocked mutex
-	mutex_init(&table->mutex);
-
-	// Replace the clone with an actual copy
-	vma = create_table_mapping(mm);
-	ret = PTR_ERR(vma);
-	if (IS_ERR(vma))
-		goto fail_create;
-
-	ret = vm_insert_page(vma, FASTCALL_ADDR, page);
-	if (WARN_ON(ret < 0))
-		goto fail_insert;
-
-	ret = 0;
-
-fail_insert:
-fail_create:
-	if (ret < 0)
-		mutex_destroy(&table->mutex);
-	mutex_unlock(&oldtable->mutex);
-fail_table_lock:
-	kunmap(oldpage);
-	kunmap(page);
-	put_page(oldpage);
-fail_follow:
-	__free_page(page);
-fail_alloc:
-fail_oldvma:
-	return ret;
+	return insert_table(mm);
 }
 
 /*
  * create_stacks - create per-CPU fastcall stacks
  *
  * No operation is performed when the stacks are already created.
+ * Note that stacks are shared between forks to save memory.
  */
 static int create_stacks(void)
 {
@@ -318,7 +260,8 @@ static int create_stacks(void)
 		return 0;
 
 	vma = _install_special_mapping(mm, FC_STACK_BOTTOM,
-				       nr_cpu_ids * PAGE_SIZE, FASTCALL_VM_RW,
+				       nr_cpu_ids * PAGE_SIZE,
+				       FASTCALL_VM_RW & ~VM_DONTCOPY,
 				       &stacks_mapping);
 	err = PTR_ERR(vma);
 	if (WARN_ON(IS_ERR(vma)))

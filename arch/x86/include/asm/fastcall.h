@@ -35,10 +35,10 @@
 #ifdef CONFIG_FASTCALL
 
 #define GFP_FASTCALL (GFP_HIGHUSER | __GFP_ZERO | __GFP_ACCOUNT)
-#define FASTCALL_VM_RO VM_READ | VM_MAYREAD
+#define FASTCALL_VM_RO (VM_DONTCOPY | VM_READ | VM_MAYREAD)
 #define FASTCALL_VM_RW                                                         \
-	FASTCALL_VM_RO | VM_WRITE | VM_MAYWRITE | VM_SHARED | VM_MAYSHARE
-#define FASTCALL_VM_RX FASTCALL_VM_RO | VM_EXEC | VM_MAYEXEC
+	(FASTCALL_VM_RO | VM_WRITE | VM_MAYWRITE | VM_SHARED | VM_MAYSHARE)
+#define FASTCALL_VM_RX (FASTCALL_VM_RO | VM_EXEC | VM_MAYEXEC)
 
 typedef long fastcall_attr[NR_FC_ATTRIBS];
 
@@ -48,17 +48,11 @@ extern int register_fastcall(struct page **, unsigned long, unsigned long,
 extern unsigned long create_additional_mapping(struct page **, unsigned long,
 					       unsigned long, bool);
 extern void remove_additional_mapping(unsigned long);
-extern int fastcall_dup_table(struct mm_struct *, struct mm_struct *);
 #else
 int setup_fastcall_page(void)
 {
 	return 0;
 }
-int fastcall_dup_table(struct mm_struct *, struct mm_struct *)
-{
-	return 0;
-}
-
 #endif /* CONFIG_FASTCALL */
 
 #endif /* __ASSEMBLER__ */

@@ -341,6 +341,9 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 static void fastcall_function_close(const struct vm_special_mapping *sm,
 				    struct vm_area_struct *vma)
 {
+	struct fastcall_fn_unmap *fn_unmap = sm->priv;
+	if (fn_unmap)
+		fn_unmap->ops->free(fn_unmap);
 	kfree(sm);
 }
 
@@ -350,9 +353,13 @@ static void fastcall_function_close(const struct vm_special_mapping *sm,
 static int fastcall_function_unmap(const struct vm_special_mapping *sm,
 				   struct vm_area_struct *vma)
 {
+	struct fastcall_fn_unmap *fn_unmap = sm->priv;
+
 	/* Prevent fastcall_function_unmap from beeing called twice when munmap fails later on
 	   and the process retries munmap. */
 	vma->vm_private_data = (void *)&unmappable_mapping;
+	if (fn_unmap)
+		fn_unmap->ops->unmap(fn_unmap);
 	fastcall_function_close(sm, vma);
 	return 0;
 }
@@ -363,7 +370,7 @@ static int fastcall_function_unmap(const struct vm_special_mapping *sm,
  * Return a pointer to the first address of the area.
  */
 static unsigned long install_function_mapping(struct page **pages,
-					      unsigned long num)
+					      unsigned long num, struct fastcall_fn_unmap *fn_unmap)
 {
 	unsigned long addr;
 	struct vm_special_mapping *sm;
@@ -378,6 +385,7 @@ static unsigned long install_function_mapping(struct page **pages,
 	sm->may_unmap = fastcall_function_unmap;
 	sm->close = fastcall_function_close;
 	sm->fault = fastcall_fault;
+	sm->priv = fn_unmap;
 
 	// Pages need to be executable also in kernel mode
 	addr = create_mapping(pages, num, FASTCALL_VM_RX, false, sm);
@@ -420,7 +428,7 @@ int register_fastcall(struct fastcall_reg_args *args)
 	if (ret < 0)
 		goto fail_create_stacks;
 
-	fn_ptr = install_function_mapping(args->pages, args->num);
+	fn_ptr = install_function_mapping(args->pages, args->num, args->fn_unmap);
 	if (IS_ERR_VALUE(fn_ptr)) {
 		ret = (long)fn_ptr;
 		goto fail_install_function;

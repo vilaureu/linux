@@ -410,6 +410,13 @@ static void fastcall_function_close(const struct vm_special_mapping *sm,
 }
 
 /*
+ * smp_noop_func - function for smp_call_function which does nothing
+ */
+static void smp_noop_func(void *info)
+{
+}
+
+/*
  * fastcall_function_unmap - remove the function from the fastcall table and free associated mappings
  */
 static int fastcall_function_unmap(const struct vm_special_mapping *sm,
@@ -426,7 +433,15 @@ static int fastcall_function_unmap(const struct vm_special_mapping *sm,
 		if (IS_ERR(table))
 			goto fail_map;
 
-		// TODO remove entry
+		WRITE_ONCE(table->entries[fn_unmap->index].fn_ptr,
+			   fastcall_noop);
+		/*
+		 * Make sure that no other CPU is executing this fastcall function currently
+		 * by interrupting all other CPUs for a SMP function.
+		 * This waits for all fastcall functions to finish because they
+		 * are executed with interrupts disabled.
+		 */
+		smp_call_function(smp_noop_func, NULL, true);
 
 		unmap_table(table, page);
 	}

@@ -122,12 +122,14 @@ static unsigned long function_offset(const void (*fn)(void))
 	return fn - fce_functions_start;
 }
 
-static void private_unmap(const struct fastcall_fn_unmap *fn_unmap) {
-	remove_additional_mapping((unsigned long) fn_unmap->priv);
+static void private_unmap(void *priv)
+{
+	fastcall_remove_mapping((unsigned long)priv);
 }
 
-static void private_free(const struct fastcall_fn_unmap *fn_unmap) {
-	kfree(fn_unmap);
+static void private_free(void *priv)
+{
+	// priv stores the address directly, nothing to free here
 }
 
 static const struct fastcall_fn_ops private_fn_ops = {
@@ -143,17 +145,12 @@ static long private_example(unsigned long args)
 	unsigned long ptr;
 	struct page *page;
 	long ret = -ENOMEM;
-	struct fastcall_fn_unmap *fn_unmap;
 	struct fastcall_reg_args reg_args = {
 		.pages = fce_pages,
 		.num = NR_FCE_PAGES,
 		.off = function_offset(fce_write_ptr),
 		.attribs = { 0, 0, 0 },
 	};
-
-	fn_unmap = kmalloc(GFP_KERNEL, sizeof(struct fastcall_fn_unmap));
-	if (!fn_unmap)
-		goto fail_malloc;
 
 	page = alloc_page(GFP_FASTCALL);
 	if (!page)
@@ -164,9 +161,8 @@ static long private_example(unsigned long args)
 	if (IS_ERR_VALUE(ptr))
 		goto fail_create;
 
-	fn_unmap->priv = (void *) ptr;
-	fn_unmap->ops = &private_fn_ops;
-	reg_args.fn_unmap = fn_unmap;
+	reg_args.ops = &private_fn_ops;
+	reg_args.priv = (void *)ptr;
 	reg_args.attribs[0] = ptr;
 	ret = register_and_copy(reg_args, args);
 
@@ -175,9 +171,6 @@ static long private_example(unsigned long args)
 fail_create:
 	__free_page(page);
 fail_alloc:
-	if (ret < 0)
-		kfree(fn_unmap);
-fail_malloc:
 	return ret;
 }
 

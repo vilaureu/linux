@@ -48,6 +48,21 @@ struct fastcall_table {
 };
 
 /*
+ * fn_unmap - struct inserted into vm_special_mapping
+ *
+ * Allows the registrar of a fastcall function to handle unmapping of additional mappings.
+ *
+ * @ops   - fastcall_fn_ops. Can be NULL
+ * @priv  - Private data of the registrar
+ * @index - Index of the fastcall function pointer in the table
+ */
+struct fn_unmap {
+	const struct fastcall_fn_ops *ops;
+	void *priv;
+	unsigned index;
+};
+
+/*
  * fastcall_mremap - prohibit any remapping of the fastcall pages
  */
 static int fastcall_mremap(const struct vm_special_mapping *sm,
@@ -130,9 +145,11 @@ static struct vm_area_struct *find_vma_containing(struct mm_struct *mm,
 }
 
 /*
- * remove_mapping - remove a fastcall function or any additional mapping at this address
+ * fastcall_remove_mapping - remove a fastcall function or any additional mapping at this address
+ *
+ * Called with the mmap lock held.
  */
-static void remove_mapping(unsigned long addr)
+void fastcall_remove_mapping(unsigned long addr)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
@@ -150,6 +167,7 @@ static void remove_mapping(unsigned long addr)
 
 	WARN_ON(do_munmap(mm, addr, vma->vm_end - vma->vm_start, NULL));
 }
+EXPORT_SYMBOL(fastcall_remove_mapping);
 
 /*
  * insert_table - Insert the mapping for the fastcall table.
@@ -238,6 +256,49 @@ int fastcall_dup_table(struct mm_struct *oldmm, struct mm_struct *mm)
 }
 
 /*
+ * map_table - pin, map and lock the fastcall table of current
+ *
+ * @page - Returns the page containing the fastcall table
+ */
+static struct fastcall_table *map_table(struct page **page)
+{
+	int err;
+	struct fastcall_table *table;
+
+	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
+	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);
+	BUILD_BUG_ON(sizeof(struct fastcall_entry) != FC_ENTRY_SIZE);
+
+	err = pin_user_pages(FASTCALL_ADDR, 1, FOLL_TOUCH, page, NULL);
+	if (err < 0)
+		goto fail_pin_table;
+
+	table = kmap(*page);
+
+	err = -EINTR;
+	if (mutex_lock_killable(&table->mutex))
+		goto fail_table_lock;
+
+	return table;
+
+fail_table_lock:
+	kunmap(*page);
+	unpin_user_page(*page);
+fail_pin_table:
+	return ERR_PTR(err);
+}
+
+/*
+ * unlock, unmap and unpin the fastcall table
+ */
+static void unmap_table(struct fastcall_table *table, struct page *page)
+{
+	mutex_unlock(&table->mutex);
+	kunmap(page);
+	unpin_user_page(page);
+}
+
+/*
  * create_stacks - create per-CPU fastcall stacks
  *
  * No operation is performed when the stacks are already created.
@@ -293,7 +354,7 @@ fail_alloc:
 	kfree(pages);
 fail_malloc:
 	if (err < 0)
-		remove_mapping(FC_STACK_BOTTOM);
+		fastcall_remove_mapping(FC_STACK_BOTTOM);
 fail_install:
 	return err;
 }
@@ -326,7 +387,7 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 
 	err = vm_insert_pages(vma, addr, pages, &num);
 	if (err) {
-		remove_mapping(addr);
+		fastcall_remove_mapping(addr);
 		return err;
 	}
 
@@ -341,9 +402,10 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 static void fastcall_function_close(const struct vm_special_mapping *sm,
 				    struct vm_area_struct *vma)
 {
-	struct fastcall_fn_unmap *fn_unmap = sm->priv;
-	if (fn_unmap)
-		fn_unmap->ops->free(fn_unmap);
+	struct fn_unmap *fn_unmap = sm->priv;
+	if (fn_unmap && fn_unmap->ops)
+		fn_unmap->ops->free(fn_unmap->priv);
+	kfree(fn_unmap);
 	kfree(sm);
 }
 
@@ -353,24 +415,46 @@ static void fastcall_function_close(const struct vm_special_mapping *sm,
 static int fastcall_function_unmap(const struct vm_special_mapping *sm,
 				   struct vm_area_struct *vma)
 {
-	struct fastcall_fn_unmap *fn_unmap = sm->priv;
+	int ret;
+	struct fn_unmap *fn_unmap = sm->priv;
+	struct fastcall_table *table;
+	struct page *page;
+
+	if (fn_unmap) {
+		table = map_table(&page);
+		ret = PTR_ERR(table);
+		if (IS_ERR(table))
+			goto fail_map;
+
+		// TODO remove entry
+
+		unmap_table(table, page);
+	}
 
 	/* Prevent fastcall_function_unmap from beeing called twice when munmap fails later on
 	   and the process retries munmap. */
 	vma->vm_private_data = (void *)&unmappable_mapping;
-	if (fn_unmap)
-		fn_unmap->ops->unmap(fn_unmap);
+	if (fn_unmap && fn_unmap->ops)
+		fn_unmap->ops->unmap(fn_unmap->priv);
+
 	fastcall_function_close(sm, vma);
-	return 0;
+
+	ret = 0;
+
+fail_map:
+	return ret;
 }
 
 /*
  * install_function_mapping - create and populate a mapping for the function text pages
  *
+ * @fn_unmap - Returns a pointer to the fn_unmap pointer in vm_special_mapping
+ *
  * Return a pointer to the first address of the area.
  */
 static unsigned long install_function_mapping(struct page **pages,
-					      unsigned long num, struct fastcall_fn_unmap *fn_unmap)
+					      unsigned long num,
+					      struct fn_unmap ***fn_unmap)
 {
 	unsigned long addr;
 	struct vm_special_mapping *sm;
@@ -385,7 +469,8 @@ static unsigned long install_function_mapping(struct page **pages,
 	sm->may_unmap = fastcall_function_unmap;
 	sm->close = fastcall_function_close;
 	sm->fault = fastcall_fault;
-	sm->priv = fn_unmap;
+	sm->priv = NULL;
+	*fn_unmap = (struct fn_unmap **)&sm->priv;
 
 	// Pages need to be executable also in kernel mode
 	addr = create_mapping(pages, num, FASTCALL_VM_RX, false, sm);
@@ -408,27 +493,32 @@ fail_alloc:
  */
 int register_fastcall(struct fastcall_reg_args *args)
 {
-	int ret = 0;
+	int ret;
 	size_t i;
 	struct mm_struct *mm = current->mm;
 	struct page *page;
 	struct fastcall_table *table;
+	struct fn_unmap *fn_unmap;
+	struct fn_unmap **fn_unmap_ptr;
 	unsigned long fn_ptr;
 
 	BUG_ON(args->num * PAGE_SIZE <= args->off);
 
-	if (mmap_write_lock_killable(mm))
-		return -EINTR;
+	fn_unmap = kmalloc(sizeof(struct fn_unmap), GFP_KERNEL);
+	ret = -ENOMEM;
+	if (!fn_unmap)
+		goto fail_malloc;
 
-	ret = pin_user_pages(FASTCALL_ADDR, 1, FOLL_TOUCH, &page, NULL);
-	if (ret < 0)
-		goto fail_pin_table;
+	ret = -EINTR;
+	if (mmap_write_lock_killable(mm))
+		goto fail_lock;
 
 	ret = create_stacks();
 	if (ret < 0)
 		goto fail_create_stacks;
 
-	fn_ptr = install_function_mapping(args->pages, args->num, args->fn_unmap);
+	fn_ptr =
+		install_function_mapping(args->pages, args->num, &fn_unmap_ptr);
 	if (IS_ERR_VALUE(fn_ptr)) {
 		ret = (long)fn_ptr;
 		goto fail_install_function;
@@ -436,14 +526,10 @@ int register_fastcall(struct fastcall_reg_args *args)
 	args->fn_addr = fn_ptr;
 	fn_ptr += args->off;
 
-	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
-	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);
-	BUILD_BUG_ON(sizeof(struct fastcall_entry) != FC_ENTRY_SIZE);
-	table = kmap(page);
-	if (mutex_lock_killable(&table->mutex)) {
-		ret = -EINTR;
-		goto fail_table_lock;
-	}
+	table = map_table(&page);
+	ret = PTR_ERR(table);
+	if (IS_ERR(table))
+		goto fail_map;
 
 	// Search a free table entry and insert the fn_ptr and attribs there
 	for (i = 0; i < NR_ENTRIES; i++) {
@@ -465,21 +551,26 @@ int register_fastcall(struct fastcall_reg_args *args)
 	if (i >= NR_ENTRIES)
 		ret = -EINVAL; // The fastcall table is full
 
+	// Past last failure possibility
 	args->index = i;
+	fn_unmap->index = i;
+	fn_unmap->ops = args->ops;
+	fn_unmap->priv = args->priv;
+	*fn_unmap_ptr = fn_unmap;
 
-	mutex_unlock(&table->mutex);
-fail_table_lock:
+	unmap_table(table, page);
+fail_map:
 	if (ret < 0)
-		remove_mapping(fn_ptr);
-	kunmap(page);
+		fastcall_remove_mapping(fn_ptr);
 	// Marking accessed or dirty is not needed because the pages can not be evicted.
 fail_install_function:
-	unpin_user_page(page);
-fail_create_stacks:
 	// There is no need to remove the created stacks
-fail_pin_table:
+fail_create_stacks:
 	mmap_write_unlock(mm);
-
+fail_lock:
+	if (ret < 0)
+		kfree(fn_unmap);
+fail_malloc:
 	return ret;
 }
 EXPORT_SYMBOL(register_fastcall);
@@ -512,14 +603,16 @@ EXPORT_SYMBOL(create_additional_mapping);
 
 /*
  * remove_additional_mapping - remove any additional mapping at this address
+ *
+ * Called without the mmap lock held.
  */
-void remove_additional_mapping(unsigned long ptr)
+void remove_additional_mapping(unsigned long addr)
 {
 	struct mm_struct *mm = current->mm;
 
 	if (mmap_write_lock_killable(current->mm))
 		return;
-	remove_mapping(ptr);
+	fastcall_remove_mapping(addr);
 	mmap_write_unlock(mm);
 }
 EXPORT_SYMBOL(remove_additional_mapping);

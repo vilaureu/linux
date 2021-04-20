@@ -42,7 +42,6 @@
 
 typedef long fastcall_attr[NR_FC_ATTRIBS];
 
-struct fastcall_fn_unmap;
 /*
  * fastcall_fn_ops - callbacks for fastcall_fn_unmap
  *
@@ -52,40 +51,29 @@ struct fastcall_fn_unmap;
  * @free  - Called anytime the function mapping is closed (also after unmap)
  */
 struct fastcall_fn_ops {
-	void (*unmap) (const struct fastcall_fn_unmap*);
-	void (*free) (const struct fastcall_fn_unmap*);
-};
-
-/*
- * fastcall_fn_unmap - struct inserted into vm_special_mapping
- *
- * Allows the registrar of a fastcall function to handle unmapping of additional mappings.
- *
- * @ops  - fastcall_fn_ops. Must not be NULL
- * @priv - Private data of the registrar
- */
-struct fastcall_fn_unmap {
-	const struct fastcall_fn_ops *ops;
-	void *priv;
+	void (*unmap)(void *priv);
+	void (*free)(void *priv);
 };
 
 /*
  * fastcall_reg_args - arguments passed in and out for register_fastcall
  *
- * @pages    - Array of text pages for the fastcall
- * @num      - Number of pages in the attribute pages
- * @off      - Offset of the entry point into the pages
- * @attribs  - Additional attributes to put into the fastcall table
- * @fn_unmap - fastcall_fn_unmap. Can be NULL
- * @fn_ptr   - Output for the address to the function mapping
- * @index    - Output for the index of the new table entry
+ * @pages   - Array of text pages for the fastcall
+ * @num     - Number of pages in the attribute pages
+ * @off     - Offset of the entry point into the pages
+ * @attribs - Additional attributes to put into the fastcall table
+ * @ops     - Functions called on unmapping or closing of the function mapping
+ * @priv    - Private data for the functions in ops
+ * @fn_ptr  - Output for the address to the function mapping
+ * @index   - Output for the index of the new table entry
  */
 struct fastcall_reg_args {
 	struct page **pages;
 	unsigned long num;
 	unsigned long off;
 	fastcall_attr attribs;
-	struct fastcall_fn_unmap *fn_unmap;
+	const struct fastcall_fn_ops *ops;
+	void *priv;
 	unsigned long fn_addr;
 	unsigned index;
 };
@@ -95,6 +83,7 @@ extern int register_fastcall(struct fastcall_reg_args *);
 extern unsigned long create_additional_mapping(struct page **, unsigned long,
 					       unsigned long, bool);
 extern void remove_additional_mapping(unsigned long);
+extern void fastcall_remove_mapping(unsigned long);
 #else
 int setup_fastcall_page(void)
 {

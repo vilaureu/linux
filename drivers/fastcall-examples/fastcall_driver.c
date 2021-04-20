@@ -32,6 +32,21 @@ struct ioctl_args {
 };
 
 /*
+ * array_args - information returned from the array example ioctl handler
+ *
+ * @fn_addr     - Start of the function mapping
+ * @fn_len      - Length of the function mapping
+ * @shared_addr - Address of the shared buffer
+ * @index       - Index of the function in the fastcall table
+ */
+struct array_args {
+	unsigned long fn_addr;
+	unsigned long fn_len;
+	unsigned long shared_addr;
+	unsigned index;
+};
+
+/*
  * Function labels from fastcall_functions.S.
  */
 const void fce_functions_start(void);
@@ -39,6 +54,7 @@ const void fce_noop(void);
 const void fce_stack(void);
 const void fce_write_ptr(void);
 const void fce_functions_end(void);
+const void fce_array(void);
 
 /*
  * FCE_FUNCTIONS_SIZE - size of the fastcall function text segment in bytes
@@ -46,10 +62,12 @@ const void fce_functions_end(void);
 #define FCE_FUNCTIONS_SIZE                                                     \
 	((unsigned long)(fce_functions_end - fce_functions_start))
 #define NR_FCE_PAGES ((FCE_FUNCTIONS_SIZE - 1) / PAGE_SIZE + 1)
-#define FCE_IOCTL(cmd) (_IOR(0xDE, cmd, struct ioctl_args))
+#define FCE_TYPE 0xDE
+#define FCE_IOCTL(cmd) (_IOR(FCE_TYPE, cmd, struct ioctl_args))
 #define FCE_IOCTL_NOOP (FCE_IOCTL(0))
 #define FCE_IOCTL_STACK (FCE_IOCTL(1))
 #define FCE_IOCTL_PRIV (FCE_IOCTL(2))
+#define FCE_IOCTL_ARRAY (_IOR(FCE_TYPE, 3, struct array_args))
 
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
@@ -122,6 +140,20 @@ static unsigned long function_offset(const void (*fn)(void))
 	return fn - fce_functions_start;
 }
 
+/*
+ * args_for - return fastcall_reg_args for this function
+ *
+ * pages, num and off are filled in.
+ */
+static struct fastcall_reg_args args_for(const void (*fn)(void))
+{
+	return (struct fastcall_reg_args){
+		.pages = fce_pages,
+		.num = NR_FCE_PAGES,
+		.off = function_offset(fn),
+	};
+}
+
 static void private_unmap(void *priv)
 {
 	fastcall_remove_mapping((unsigned long)priv);
@@ -142,35 +174,135 @@ static const struct fastcall_fn_ops private_fn_ops = {
  */
 static long private_example(unsigned long args)
 {
-	unsigned long ptr;
+	unsigned long addr;
 	struct page *page;
 	long ret = -ENOMEM;
-	struct fastcall_reg_args reg_args = {
-		.pages = fce_pages,
-		.num = NR_FCE_PAGES,
-		.off = function_offset(fce_write_ptr),
-		.attribs = { 0, 0, 0 },
-	};
+	struct fastcall_reg_args reg_args = args_for(fce_write_ptr);
 
 	page = alloc_page(GFP_FASTCALL);
 	if (!page)
 		goto fail_alloc;
 
-	ptr = create_additional_mapping(&page, 1, FASTCALL_VM_RW, false);
-	ret = (long)ptr;
-	if (IS_ERR_VALUE(ptr))
+	addr = create_additional_mapping(&page, 1, FASTCALL_VM_RW, false);
+	ret = (long)addr;
+	if (IS_ERR_VALUE(addr))
 		goto fail_create;
 
 	reg_args.ops = &private_fn_ops;
-	reg_args.priv = (void *)ptr;
-	reg_args.attribs[0] = ptr;
+	reg_args.priv = (void *)addr;
+	reg_args.attribs[0] = addr;
 	ret = register_and_copy(reg_args, args);
 
 	if (ret < 0)
-		remove_additional_mapping(ptr);
+		remove_additional_mapping(addr);
 fail_create:
 	__free_page(page);
 fail_alloc:
+	return ret;
+}
+
+static void array_unmap(void *priv)
+{
+	unsigned long(*mappings)[2] = priv;
+	fastcall_remove_mapping((*mappings)[0]);
+	fastcall_remove_mapping((*mappings)[1]);
+}
+
+static void array_free(void *priv)
+{
+	kfree(priv);
+}
+
+static const struct fastcall_fn_ops array_fn_ops = {
+	.unmap = array_unmap,
+	.free = array_free,
+};
+
+/*
+ * array_example - example for copying data with a shared buffer
+ *
+ * Data is copies from the shared buffer to an array of chararcter arrays.
+ */
+static long array_example(unsigned long args)
+{
+	unsigned long shared_addr, array_addr;
+	struct page *shared_page, *array_page;
+	unsigned long(*priv)[2];
+	long ret;
+	struct fastcall_reg_args reg_args = args_for(fce_array);
+	struct array_args *array_args;
+
+	priv = kmalloc(sizeof(unsigned long[2]), GFP_KERNEL);
+	ret = -ENOMEM;
+	if (!priv)
+		goto fail_malloc;
+
+	shared_page = alloc_page(GFP_FASTCALL);
+	ret = -ENOMEM;
+	if (!shared_page)
+		goto fail_shared_alloc;
+
+	shared_addr = create_additional_mapping(&shared_page, 1, FASTCALL_VM_RW,
+						true);
+	ret = (long)shared_addr;
+	if (IS_ERR_VALUE(shared_addr))
+		goto fail_shared_create;
+
+	array_page = alloc_page(GFP_FASTCALL);
+	ret = -ENOMEM;
+	if (!array_page)
+		goto fail_array_alloc;
+
+	array_addr = create_additional_mapping(&array_page, 1, FASTCALL_VM_RW,
+					       false);
+	ret = (long)shared_addr;
+	if (IS_ERR_VALUE(shared_addr))
+		goto fail_array_create;
+
+	(*priv)[0] = shared_addr;
+	(*priv)[1] = array_addr;
+	reg_args.ops = &array_fn_ops;
+	reg_args.priv = priv;
+	reg_args.attribs[0] = shared_addr;
+	reg_args.attribs[1] = array_addr;
+
+	array_args = kzalloc(sizeof(struct array_args), GFP_KERNEL);
+	ret = -ENOMEM;
+	if (!array_args)
+		goto fail_args_alloc;
+
+	ret = register_fastcall(&reg_args);
+	if (ret < 0)
+		goto fail_register;
+
+	array_args->fn_addr = reg_args.fn_addr;
+	array_args->fn_len = NR_FCE_PAGES * PAGE_SIZE;
+	array_args->shared_addr = shared_addr;
+	array_args->index = reg_args.index;
+
+	ret = 1;
+	if (copy_to_user((void *)args, array_args, sizeof(struct array_args)))
+		goto fail_copy;
+
+	ret = 0;
+
+fail_copy:
+fail_register:
+	kfree(array_args);
+fail_args_alloc:
+	if (ret < 0)
+		remove_additional_mapping(array_addr);
+fail_array_create:
+	__free_page(array_page);
+fail_array_alloc:
+	if (ret < 0)
+		remove_additional_mapping(shared_addr);
+fail_shared_create:
+	__free_page(shared_page);
+fail_shared_alloc:
+	if (ret < 0)
+		kfree(priv);
+fail_malloc:
 	return ret;
 }
 
@@ -180,23 +312,22 @@ fail_alloc:
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	long ret = -ENOIOCTLCMD;
-	struct fastcall_reg_args reg_args = {
-		.pages = fce_pages,
-		.num = NR_FCE_PAGES,
-		.attribs = { 0, 0, 0 },
-	};
+	struct fastcall_reg_args reg_args;
 
 	switch (cmd) {
 	case FCE_IOCTL_NOOP:
-		reg_args.off = function_offset(fce_noop);
+		reg_args = args_for(fce_noop);
 		ret = register_and_copy(reg_args, args);
 		break;
 	case FCE_IOCTL_STACK:
-		reg_args.off = function_offset(fce_stack);
+		reg_args = args_for(fce_stack);
 		ret = register_and_copy(reg_args, args);
 		break;
 	case FCE_IOCTL_PRIV:
 		ret = private_example(args);
+		break;
+	case FCE_IOCTL_ARRAY:
+		ret = array_example(args);
 		break;
 	}
 

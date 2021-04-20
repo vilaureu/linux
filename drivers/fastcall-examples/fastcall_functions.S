@@ -10,10 +10,16 @@
 #include <asm/segment.h>
 #include <asm/alternative-asm.h>
 #include <asm/cpufeatures.h>
+#include <asm-generic/errno-base.h>
+#include <asm/smap.h>
 #include <asm/fastcall.h>
 
 #define SARG0 (1 * 8)
+#define SARG1 (2 * 8)
 #define ARG1 %rsi
+#define ARG2 %rdx
+#define DATA_SIZE 64
+#define ARRAY_LENGTH (PAGE_SIZE / DATA_SIZE)
 
 /*
  * Set the stack pointer to the per-CPU stack.
@@ -49,7 +55,7 @@ SYM_INNER_LABEL(fce_functions_start, SYM_L_GLOBAL)
  */
 SYM_CODE_START(fce_noop)
 	UNWIND_HINT_EMPTY
-	movq $0, %rax
+	xorq %rax, %rax
 	sysretq
 SYM_CODE_END(fce_noop)
 
@@ -70,7 +76,7 @@ SYM_CODE_START(fce_stack)
 SYM_CODE_END(fce_stack)
 
 /*
- * fce_stack - sysret with the first argument as return value plus 1
+ * fce_write_ptr - sysret with the first argument as return value plus 1
  *
  * Writes to and reads from the address stored in the first entry attribute.
  */
@@ -84,5 +90,54 @@ SYM_CODE_START(fce_write_ptr)
 
 	sysretq
 SYM_CODE_END(fce_write_ptr)
+
+/*
+ * fce_array - copy data from the shared memroy region
+ *
+ * The first argument is the index into the array;
+ * The second argument is the size of the data in bytes.
+ * The data can be up to ARRAY_SIZE charactes long.
+ * The data is copied in 8 byte granularity.
+ */
+SYM_CODE_START(fce_array)
+	UNWIND_HINT_EMPTY
+
+	cmpq $ARRAY_LENGTH, ARG1
+	jae oob
+	cmpq $DATA_SIZE, ARG2
+	ja oob
+
+	movq SARG1(%rax), %rdi
+	imulq $DATA_SIZE, ARG1
+	addq %rdi, ARG1
+	movq SARG0(%rax), %rdi
+
+	ASM_STAC
+	// Copy %rdx bytes from (%rdi) to (%rsi)
+	movq %rdx, %rax
+	shrq $3, %rdx
+	andq $7, %rax
+	jz 0f
+	inc %rdx
+0:
+	andq %rdx, %rdx
+	jz end
+copy:
+	movq (%rdi), %rax
+	movq %rax, (%rsi)
+	leaq 8(%rdi), %rdi
+	leaq 8(%rsi), %rsi
+	decq %rdx
+	jnz copy
+end:
+	ASM_CLAC
+	xorq %rax, %rax
+	// movq %rdi, %rax
+	sysretq
+
+oob:
+	movq $(-EINVAL), %rax
+	sysretq
+SYM_CODE_END(fce_array)
 
 SYM_INNER_LABEL(fce_functions_end, SYM_L_GLOBAL)

@@ -151,6 +151,7 @@ static struct fastcall_reg_args args_for(const void (*fn)(void))
 		.pages = fce_pages,
 		.num = NR_FCE_PAGES,
 		.off = function_offset(fn),
+		.module = THIS_MODULE,
 	};
 }
 

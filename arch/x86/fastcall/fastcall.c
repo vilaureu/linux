@@ -12,6 +12,7 @@
 #include <linux/highmem.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/module.h>
 #include <asm/fastcall.h>
 #include <asm/barrier.h>
 
@@ -52,13 +53,15 @@ struct fastcall_table {
  *
  * Allows the registrar of a fastcall function to handle unmapping of additional mappings.
  *
- * @ops   - fastcall_fn_ops. Can be NULL
- * @priv  - Private data of the registrar
- * @index - Index of the fastcall function pointer in the table
+ * @ops    - fastcall_fn_ops. Can be NULL
+ * @priv   - Private data of the registrar
+ * @module - The registrar of this fastcall function
+ * @index  - Index of the fastcall function pointer in the table
  */
 struct fn_unmap {
 	const struct fastcall_fn_ops *ops;
 	void *priv;
+	struct module *module;
 	unsigned index;
 };
 
@@ -403,9 +406,12 @@ static void fastcall_function_close(const struct vm_special_mapping *sm,
 				    struct vm_area_struct *vma)
 {
 	struct fn_unmap *fn_unmap = sm->priv;
-	if (fn_unmap && fn_unmap->ops)
-		fn_unmap->ops->free(fn_unmap->priv);
-	kfree(fn_unmap);
+	if (fn_unmap) {
+		if (fn_unmap->ops)
+			fn_unmap->ops->free(fn_unmap->priv);
+		module_put(fn_unmap->module);
+		kfree(fn_unmap);
+	}
 	kfree(sm);
 }
 
@@ -519,6 +525,10 @@ int register_fastcall(struct fastcall_reg_args *args)
 
 	BUG_ON(args->num * PAGE_SIZE <= args->off);
 
+	ret = -ENOENT;
+	if (!try_module_get(args->module))
+		goto fail_module;
+
 	fn_unmap = kmalloc(sizeof(struct fn_unmap), GFP_KERNEL);
 	ret = -ENOMEM;
 	if (!fn_unmap)
@@ -571,6 +581,7 @@ int register_fastcall(struct fastcall_reg_args *args)
 	fn_unmap->index = i;
 	fn_unmap->ops = args->ops;
 	fn_unmap->priv = args->priv;
+	fn_unmap->module = args->module;
 	*fn_unmap_ptr = fn_unmap;
 
 	unmap_table(table, page);
@@ -586,6 +597,9 @@ fail_lock:
 	if (ret < 0)
 		kfree(fn_unmap);
 fail_malloc:
+	if (ret < 0)
+		module_put(args->module);
+fail_module:
 	return ret;
 }
 EXPORT_SYMBOL(register_fastcall);

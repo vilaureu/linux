@@ -65,6 +65,7 @@ struct fastcall_fn_ops {
  * @ops     - Functions called on unmapping or closing of the function mapping
  * @priv    - Private data for the functions in ops
  * @fn_ptr  - Output for the address to the function mapping
+ * @module  - The registrar of this fastcall function
  * @index   - Output for the index of the new table entry
  */
 struct fastcall_reg_args {
@@ -75,6 +76,7 @@ struct fastcall_reg_args {
 	const struct fastcall_fn_ops *ops;
 	void *priv;
 	unsigned long fn_addr;
+	struct module *module;
 	unsigned index;
 };
 

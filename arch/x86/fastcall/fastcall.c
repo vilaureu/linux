@@ -127,7 +127,7 @@ static const struct vm_special_mapping unmappable_mapping = {
  */
 void vma_set_kernel(struct vm_area_struct *vma)
 {
-	pgprotval_t pgval = pgprot_val(vma->vm_page_prot) & ~(_PAGE_USER);
+	pgprotval_t pgval = pgprot_val(vma->vm_page_prot) & ~_PAGE_USER;
 	WRITE_ONCE(vma->vm_page_prot, __pgprot(pgval));
 }
 

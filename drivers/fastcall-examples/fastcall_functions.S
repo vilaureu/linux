@@ -132,7 +132,6 @@ copy:
 end:
 	ASM_CLAC
 	xorq %rax, %rax
-	// movq %rdi, %rax
 	sysretq
 
 oob:

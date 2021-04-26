@@ -55,6 +55,7 @@ const void fce_stack(void);
 const void fce_write_ptr(void);
 const void fce_functions_end(void);
 const void fce_array(void);
+const void fce_array_nt(void);
 
 /*
  * FCE_FUNCTIONS_SIZE - size of the fastcall function text segment in bytes
@@ -64,10 +65,12 @@ const void fce_array(void);
 #define NR_FCE_PAGES ((FCE_FUNCTIONS_SIZE - 1) / PAGE_SIZE + 1)
 #define FCE_TYPE 0xDE
 #define FCE_IOCTL(cmd) (_IOR(FCE_TYPE, cmd, struct ioctl_args))
+#define FCE_ARRAY_LIKE(cmd) ((_IOR(FCE_TYPE, cmd, struct array_args)))
 #define FCE_IOCTL_NOOP (FCE_IOCTL(0))
 #define FCE_IOCTL_STACK (FCE_IOCTL(1))
 #define FCE_IOCTL_PRIV (FCE_IOCTL(2))
-#define FCE_IOCTL_ARRAY (_IOR(FCE_TYPE, 3, struct array_args))
+#define FCE_IOCTL_ARRAY (FCE_ARRAY_LIKE(3))
+#define FCE_IOCTL_NT (FCE_ARRAY_LIKE(4))
 
 static dev_t fce_dev;
 static struct cdev *fce_cdev;
@@ -224,13 +227,13 @@ static const struct fastcall_fn_ops array_fn_ops = {
  *
  * Data is copies from the shared buffer to an array of chararcter arrays.
  */
-static long array_example(unsigned long args)
+static long array_example(unsigned long args, const void (*fn)(void))
 {
 	unsigned long shared_addr, array_addr;
 	struct page *shared_page, *array_page;
 	unsigned long(*priv)[2];
 	long ret;
-	struct fastcall_reg_args reg_args = args_for(fce_array);
+	struct fastcall_reg_args reg_args = args_for(fn);
 	struct array_args *array_args;
 
 	priv = kmalloc(sizeof(unsigned long[2]), GFP_KERNEL);
@@ -328,7 +331,10 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		ret = private_example(args);
 		break;
 	case FCE_IOCTL_ARRAY:
-		ret = array_example(args);
+		ret = array_example(args, fce_array);
+		break;
+	case FCE_IOCTL_NT:
+		ret = array_example(args, fce_array_nt);
 		break;
 	}
 
@@ -345,7 +351,6 @@ static int __init fce_init(void)
 	int result, page_id;
 	size_t count;
 	void *addr;
-	// TODO implement close to deregister fastcalls
 	static struct file_operations fops = {
 		.owner = THIS_MODULE,
 		.open = fce_open,

@@ -46,6 +46,16 @@ cpu_number:
 	xchgq %rsp, \reg
 .endm
 
+/*
+ * Setup code for the source and destination addresses of the array functions.
+ */
+.macro STATIC_ARRAY_ARGS
+	movq SARG1(%rax), %rdi
+	imulq $DATA_SIZE, ARG1
+	addq %rdi, ARG1
+	movq SARG0(%rax), %rdi
+.endm
+
 .text
 
 SYM_INNER_LABEL(fce_functions_start, SYM_L_GLOBAL)
@@ -89,28 +99,25 @@ SYM_CODE_START(fce_write_ptr)
 	addq $1, %rax
 
 	sysretq
-SYM_CODE_END(fce_write_ptr)
+SYM_CODE_END(fce_write_ptr)/\s\+$
 
 /*
  * fce_array - copy data from the shared memroy region
  *
  * The first argument is the index into the array;
  * The second argument is the size of the data in bytes.
- * The data can be up to ARRAY_SIZE charactes long.
+ * The data can be up to DATA_SIZE charactes long.
  * The data is copied in 8 byte granularity.
  */
 SYM_CODE_START(fce_array)
 	UNWIND_HINT_EMPTY
 
 	cmpq $ARRAY_LENGTH, ARG1
-	jae oob
+	jae inval
 	cmpq $DATA_SIZE, ARG2
-	ja oob
+	ja inval
 
-	movq SARG1(%rax), %rdi
-	imulq $DATA_SIZE, ARG1
-	addq %rdi, ARG1
-	movq SARG0(%rax), %rdi
+	STATIC_ARRAY_ARGS
 
 	ASM_STAC
 	// Copy %rdx bytes from (%rdi) to (%rsi)
@@ -133,10 +140,46 @@ end:
 	ASM_CLAC
 	xorq %rax, %rax
 	sysretq
+SYM_CODE_END(fce_array)
 
-oob:
-	movq $(-EINVAL), %rax
+/*
+ * fce_array_nt - like fce_array but with non-temporal hint
+ *
+ * The first argument is the index into the array;
+ * DATA_SIZE charactes of data are copied to the array.
+ */
+SYM_CODE_START(fce_array_nt)
+	UNWIND_HINT_EMPTY
+
+	cmpq $ARRAY_LENGTH, ARG1
+	jae inval
+
+	STATIC_ARRAY_ARGS
+
+	ASM_STAC
+
+	// Copy DATA_SIZE=64 bytes from (%rdi) to (%rsi)
+	vmovdqa (%rdi), %ymm0
+	vmovdqa 32(%rdi), %ymm1
+	vmovntdq %ymm0, (%rsi)
+	vmovntdq %ymm1, 32(%rsi)
+
+	/*
+	 * Read the written data again.
+	 * This stalls the CPU for the non-temporal write to complete.
+	 */
+	vmovdqa (%rsi), %ymm0
+	vmovdqa 32(%rsi), %ymm1
+
+	ASM_CLAC
+
+	xorq %rax, %rax
 	sysretq
 SYM_CODE_END(fce_array)
+
+SYM_CODE_START_LOCAL(inval)
+	movq $(-EINVAL), %rax
+	sysretq
+SYM_CODE_END(inval)
 
 SYM_INNER_LABEL(fce_functions_end, SYM_L_GLOBAL)

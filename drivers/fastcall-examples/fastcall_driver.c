@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <asm/fastcall.h>
 #include <asm/pgtable.h>
+#include <asm/cpufeature.h>
 
 MODULE_DESCRIPTION(
 	"An example device driver which adds some fastcalls for testing and benchmarking.");
@@ -334,7 +335,8 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		ret = array_example(args, fce_array);
 		break;
 	case FCE_IOCTL_NT:
-		ret = array_example(args, fce_array_nt);
+		if (boot_cpu_has(X86_FEATURE_AVX2) && boot_cpu_has(X86_FEATURE_AVX))
+			ret = array_example(args, fce_array_nt);
 		break;
 	}
 

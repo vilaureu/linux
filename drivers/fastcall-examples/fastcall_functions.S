@@ -99,7 +99,7 @@ SYM_CODE_START(fce_write_ptr)
 	addq $1, %rax
 
 	sysretq
-SYM_CODE_END(fce_write_ptr)/\s\+$
+SYM_CODE_END(fce_write_ptr)
 
 /*
  * fce_array - copy data from the shared memroy region

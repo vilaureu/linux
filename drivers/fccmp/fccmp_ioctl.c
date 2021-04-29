@@ -3,7 +3,9 @@
  * fccmp_ioctl.c - character device driver for comparing ioctl functions with the fastcall mechanism
  */
 
+#include <linux/fccmp_array.h>
 #include <linux/module.h>
+#include <linux/compiler_types.h>
 #include <linux/cdev.h>
 #include <linux/fs.h>
 #include <linux/ioctl.h>
@@ -13,20 +15,44 @@ MODULE_DESCRIPTION(
 	"A character device driver for comparing ioctl functions with the fastcall mechanism.");
 MODULE_LICENSE("GPL");
 
+struct array_args {
+	const char __user *data;
+	unsigned char index;
+	unsigned char size;
+};
+
 #define DEVICE_NAME "fccmp"
 #define IOCTL_TYPE 0xFC
 #define IOCTL_NOOP _IO(IOCTL_TYPE, 0)
+#define IOCTL_ARRAY _IOW(IOCTL_TYPE, 1, struct array_args)
 
 static dev_t dev;
 static struct cdev *cdev;
 static struct class *class;
 static struct device *device;
 
+static int copy_array(struct file *file, unsigned long args)
+{
+	struct array_args ioctl_args;
+
+	if (!(file->f_mode & FMODE_WRITE))
+		return -EACCES;
+
+	if (copy_from_user(&ioctl_args, (void *)args,
+			   sizeof(struct array_args)))
+		return -EFAULT;
+
+	return fccmp_copy_array(ioctl_args.data, ioctl_args.index,
+				ioctl_args.size);
+}
+
 static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	switch (cmd) {
 	case IOCTL_NOOP:
 		return 0;
+	case IOCTL_ARRAY:
+		return copy_array(file, args);
 	}
 
 	return -ENOIOCTLCMD;

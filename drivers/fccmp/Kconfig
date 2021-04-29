@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0
+
+menu "FCCMP benchmark comparison"
+
+config FCCMP_ARRAY
+	bool
+
+config FCCMP_IOCTL
+	tristate "Character device driver for comparing ioctl functions with the fastcall mechanism"
+	default y
+	select FCCMP_ARRAY
+	help
+	  Creates a device /dev/fccmp which can accepts ioctl system calls.
+	  These ioctl calls are used as a comparison when benchmarking the fastcall mechanism.
+
+endmenu

@@ -24,8 +24,8 @@ int fccmp_copy_array(const char __user *data, unsigned char index,
 	if (index >= FCCMP_ARRAY_LENGTH || size > FCCMP_DATA_SIZE)
 		return -EINVAL;
 
-	to = kmap(fccmp_page);
-	if (copy_from_user(to + index * FCCMP_DATA_SIZE, data, size))
+	to = kmap(fccmp_page) + index * FCCMP_DATA_SIZE;
+	if (copy_from_user(to, data, size))
 		ret = -EFAULT;
 	kunmap(fccmp_page);
 

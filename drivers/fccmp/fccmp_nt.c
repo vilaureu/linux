@@ -19,13 +19,11 @@ static __ro_after_init DEFINE_STATIC_KEY_FALSE(use_avx2);
  * fccmp_copy_array_nt - copy FCCMP_DATA_SIZE chars from data to the array page at the index.
  *
  * Returns -EBUSY if AVX2 is not available.
- * data must be aligned to FCCMP_DATA_SIZE.
  */
 int fccmp_copy_array_nt(const char __user *data, unsigned char index)
 {
-	long pages;
-	char *to, *from;
-	struct page *page;
+	char __aligned(FCCMP_DATA_SIZE) buffer[FCCMP_DATA_SIZE];
+	char *to;
 
 	if (!static_branch_likely(&use_avx2))
 		return -EBUSY;
@@ -34,24 +32,16 @@ int fccmp_copy_array_nt(const char __user *data, unsigned char index)
 	    (unsigned long)data % FCCMP_DATA_SIZE)
 		return -EINVAL;
 
-	pages = pin_user_pages((unsigned long)data, 1, FOLL_TOUCH, &page, NULL);
-	if (pages < 0) {
-		return pages;
-	} else if (pages < 1) {
-		// no page pinned, so no unpinning needed
+	// Copying to a buffer is faster than pinning a page
+	if (copy_from_user(buffer, data, FCCMP_DATA_SIZE))
 		return -EFAULT;
-	}
-
-	from = kmap(page);
-	to = kmap(fccmp_page);
+	to = kmap(fccmp_page) + index * FCCMP_DATA_SIZE;
 
 	kernel_fpu_begin();
-	fccmp_avx_copy(to, from);
+	fccmp_avx_copy(to, buffer);
 	kernel_fpu_end();
 
 	kunmap(fccmp_page);
-	kunmap(page);
-	unpin_user_pages(&page, 1);
 	return 0;
 }
 

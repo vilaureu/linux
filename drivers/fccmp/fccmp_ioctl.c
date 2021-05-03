@@ -3,7 +3,8 @@
  * fccmp_ioctl.c - character device driver for comparing ioctl functions with the fastcall mechanism
  */
 
-#include <linux/fccmp_array.h>
+#include "fccmp_array.h"
+#include "fccmp_nt.h"
 #include <linux/module.h>
 #include <linux/compiler_types.h>
 #include <linux/cdev.h>
@@ -21,10 +22,16 @@ struct array_args {
 	unsigned char size;
 };
 
+struct array_nt_args {
+	const char __user *data;
+	unsigned char index;
+};
+
 #define DEVICE_NAME "fccmp"
 #define IOCTL_TYPE 0xFC
 #define IOCTL_NOOP _IO(IOCTL_TYPE, 0)
 #define IOCTL_ARRAY _IOW(IOCTL_TYPE, 1, struct array_args)
+#define IOCTL_NT _IOW(IOCTL_TYPE, 2, struct array_nt_args)
 
 static dev_t dev;
 static struct cdev *cdev;
@@ -46,6 +53,20 @@ static int copy_array(struct file *file, unsigned long args)
 				ioctl_args.size);
 }
 
+static int copy_array_nt(struct file *file, unsigned long args)
+{
+	struct array_nt_args ioctl_args;
+
+	if (!(file->f_mode & FMODE_WRITE))
+		return -EACCES;
+
+	if (copy_from_user(&ioctl_args, (void *)args,
+			   sizeof(struct array_nt_args)))
+		return -EFAULT;
+
+	return fccmp_copy_array_nt(ioctl_args.data, ioctl_args.index);
+}
+
 static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
 	switch (cmd) {
@@ -53,6 +74,8 @@ static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		return 0;
 	case IOCTL_ARRAY:
 		return copy_array(file, args);
+	case IOCTL_NT:
+		return copy_array_nt(file, args);
 	}
 
 	return -ENOIOCTLCMD;

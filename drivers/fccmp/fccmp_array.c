@@ -3,14 +3,14 @@
  * fccmp_array.c - functions for copying a character sequence from user space to an array in kernel space
  */
 
-#include <linux/fccmp_array.h>
+#include "fccmp_array.h"
 #include <linux/uaccess.h>
 #include <linux/init.h>
 #include <linux/gfp.h>
 #include <linux/highmem.h>
 #include <asm-generic/errno-base.h>
 
-static struct page *fccmp_page;
+struct page *fccmp_page;
 
 /*
  * fccmp_copy_array - copy size characters from data to the array page at the index.

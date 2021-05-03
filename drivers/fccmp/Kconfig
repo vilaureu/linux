@@ -13,4 +13,11 @@ config FCCMP_IOCTL
 	  Creates a device /dev/fccmp which can accepts ioctl system calls.
 	  These ioctl calls are used as a comparison when benchmarking the fastcall mechanism.
 
+config FCCMP_NT
+	bool "Provide a function for copying a char sequence with a non-temporal hint"
+	default y
+	depends on FCCMP_ARRAY && X86_64
+	help
+	  This relies on AVX2 and is only available for x86_64.
+
 endmenu

@@ -862,8 +862,14 @@ __SYSCALL(__NR_process_madvise, sys_process_madvise)
 #define __NR_epoll_pwait2 441
 __SC_COMP(__NR_epoll_pwait2, sys_epoll_pwait2, compat_sys_epoll_pwait2)
 
+// intentionally skip fastcall system call number
+#define __NR_fccmp_array 443
+__SYSCALL(__NR_fccmp_array, sys_fccmp_array)
+#define __NR_fccmp_nt 444
+__SYSCALL(__NR_fccmp_nt, sys_fccmp_nt)
+
 #undef __NR_syscalls
-#define __NR_syscalls 442
+#define __NR_syscalls 445
 
 /*
  * 32 bit systems traditionally used different

@@ -189,6 +189,10 @@ COND_SYSCALL(getgroups);
 
 /* kernel/timer.c */
 
+/* drivers/fccmp/fccmp_syscall.c */
+COND_SYSCALL(fccmp_array);
+COND_SYSCALL(fccmp_nt);
+
 /* ipc/mqueue.c */
 COND_SYSCALL(mq_open);
 COND_SYSCALL_COMPAT(mq_open);

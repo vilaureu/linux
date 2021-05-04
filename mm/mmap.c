@@ -53,6 +53,10 @@
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 
+#ifdef CONFIG_X86
+#include <asm/fastcall.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/mmap.h>
 
@@ -2808,8 +2812,11 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 {
 	unsigned long end;
 	struct vm_area_struct *vma, *prev, *last;
+	bool in_fc_region = in_fastcall_region(start, len);
 
-	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
+	if ((offset_in_page(start)) ||
+	    ((start > TASK_SIZE || len > TASK_SIZE - start) &&
+	     !in_fc_region))
 		return -EINVAL;
 
 	len = PAGE_ALIGN(len);
@@ -2828,12 +2835,14 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	vma = find_vma(mm, start);
 	if (!vma)
 		return 0;
-	prev = vma->vm_prev;
-	/* we have  start < vma->vm_end  */
 
 	/* if it doesn't overlap, we have nothing.. */
 	if (vma->vm_start >= end)
 		return 0;
+
+	/* fastcall only supports munmap for exactly one vma */
+	if (in_fc_region && (vma->vm_start != start || vma->vm_end != end))
+		return -EINVAL;
 
 	/* check if munmap is allowed for this vma */
 	if (vma->vm_ops && vma->vm_ops->may_unmap) {
@@ -2842,6 +2851,10 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		if (error)
 			return error;
 	}
+
+	/* may_unmap may change vm_prev */ 
+	prev = vma->vm_prev;
+	/* we have  start < vma->vm_end  */
 
 	/*
 	 * If we need to split any vma, do it now to save pain later.

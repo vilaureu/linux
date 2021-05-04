@@ -41,7 +41,19 @@ rdpid:
 cpu_number:
 	andq $VDSO_CPUNODE_MASK, \reg
 	imulq $(-PAGE_SIZE), \reg
+
+#ifdef CONFIG_X86_5LEVEL
+	ALTERNATIVE "jmp level4", "jmp level5", X86_FEATURE_LA57
+level4:
+	movq $((1 << 47) - 4096), \scratch_reg
+	jmp after_level
+level5:
+	movq $((1 << 56) - 4096), \scratch_reg
+after_level:
+#else
 	movq $FC_STACK_TOP, \scratch_reg
+#endif
+	
 	addq \scratch_reg, \reg
 	xchgq %rsp, \reg
 .endm

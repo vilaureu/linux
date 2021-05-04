@@ -59,6 +59,18 @@
 #define __VIRTUAL_MASK_SHIFT	47
 #endif
 
+#ifdef CONFIG_FASTCALL
+
+/*
+ * Make room for the fastcall mappings by halving the user space.
+ * These memory areas are mapped above TASK_SIZE_MAX 
+ * to protect them from unwanted manipulations from kernel mode. 
+ */
+#define TASK_SIZE_MAX	(_AC(1,UL) << (__VIRTUAL_MASK_SHIFT - 1))
+#define DEFAULT_MAP_WINDOW	(1UL << 46)
+
+#else
+
 /*
  * User space process size.  This is the first address outside the user range.
  * There are a few constraints that determine this:
@@ -78,18 +90,9 @@
  * With page table isolation enabled, we map the LDT in ... [stay tuned]
  */
 #define TASK_SIZE_MAX	((_AC(1,UL) << __VIRTUAL_MASK_SHIFT) - PAGE_SIZE)
-
-#ifdef CONFIG_FASTCALL
-/* 
- * NR_FC_PAGES - size of the fastcall region mapped into every process
- */
-#define NR_FC_PAGES (nr_cpu_ids + 1)
-
-/* Make room for the fastcall pages above the stack. */
-#define DEFAULT_MAP_WINDOW	((1UL << 47) - NR_FC_PAGES * PAGE_SIZE)
-#else
 #define DEFAULT_MAP_WINDOW	((1UL << 47) - PAGE_SIZE)
-#endif
+
+#endif /* CONFIG_FASTCALL */
 
 /* This decides where the kernel will search for a free chunk of vm
  * space during mmap's.

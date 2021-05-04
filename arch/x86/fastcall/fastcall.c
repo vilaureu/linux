@@ -221,6 +221,8 @@ fail_create:
  * setup_fastcall_page - insert a page with fastcall function pointers into user space
  *
  * Memory layout of the fastcall pages:
+ *
+ * TODO update
  * 
  * 0xffffffffffffffff +--------------------+
  *                    | kernel space       |
@@ -382,8 +384,16 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	unsigned long len = num * PAGE_SIZE;
+	struct vm_unmapped_area_info info = {
+		.flags = 0,
+		.length = len,
+		.low_limit = TASK_SIZE_MAX, // TODO randomize
+		.high_limit = FC_STACK_BOTTOM,
+		.align_mask = 0,
+		.align_offset = 0,
+	};
 
-	addr = get_unmapped_area(NULL, 0, len, 0, 0);
+	addr = vm_unmapped_area(&info);
 	if (IS_ERR_VALUE(addr))
 		return addr;
 

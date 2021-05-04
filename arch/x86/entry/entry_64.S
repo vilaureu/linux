@@ -745,7 +745,14 @@ SYM_CODE_START_LOCAL(fastcall)
 
 	// Load function address
 	imulq $FC_ENTRY_SIZE, %rdi
+
+#ifdef CONFIG_X86_5LEVEL
+	ALTERNATIVE "mov $((1 << 47) - 4096), %rax", \
+		"mov $((1 << 56) - 4096), %rax", X86_FEATURE_LA57
+#else
 	movq $FASTCALL_ADDR, %rax
+#endif
+
 	addq %rdi, %rax
 
 	/* 

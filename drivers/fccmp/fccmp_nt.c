@@ -28,8 +28,7 @@ int fccmp_copy_array_nt(const char __user *data, unsigned char index)
 	if (!static_branch_likely(&use_avx2))
 		return -EBUSY;
 
-	if (index >= FCCMP_ARRAY_LENGTH ||
-	    (unsigned long)data % FCCMP_DATA_SIZE)
+	if (index >= FCCMP_ARRAY_LENGTH)
 		return -EINVAL;
 
 	// Copying to a buffer is faster than pinning a page

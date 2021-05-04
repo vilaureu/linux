@@ -266,15 +266,21 @@ int fastcall_dup_table(struct mm_struct *oldmm, struct mm_struct *mm)
 static struct fastcall_table *map_table(struct page **page)
 {
 	int err;
+	long nr_pages;
 	struct fastcall_table *table;
 
 	BUILD_BUG_ON(sizeof(struct fastcall_table) > PAGE_SIZE);
 	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);
 	BUILD_BUG_ON(sizeof(struct fastcall_entry) != FC_ENTRY_SIZE);
 
-	err = pin_user_pages(FASTCALL_ADDR, 1, FOLL_TOUCH, page, NULL);
-	if (err < 0)
+	nr_pages = pin_user_pages(FASTCALL_ADDR, 1, FOLL_TOUCH, page, NULL);
+	if (nr_pages != 1) {
+		if (nr_pages < 0)
+			err = nr_pages;
+		else
+			err = -EFAULT;
 		goto fail_pin_table;
+	}
 
 	table = kmap(*page);
 

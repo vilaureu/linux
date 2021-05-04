@@ -2,6 +2,7 @@
 config FASTCALL_EXAMPLES
 	tristate "Driver with example fastcalls"
 	depends on FASTCALL
+	default y
 	help
 	  Enable the fastcall-examples driver, which adds some example fastcalls
 	  for testing and benchmarking the fastcall mechanism.

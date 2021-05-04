@@ -760,6 +760,7 @@ config SCHED_OMIT_FRAME_POINTER
 config FASTCALL
 	bool "Enable the fastcall mechanism"
 	depends on X86_64
+	default y
 	help
 	  A new system call is provided which is used to execute fastcalls.
 		These fastcalls can be registered in the kernel and 

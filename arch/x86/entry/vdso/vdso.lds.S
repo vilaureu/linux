@@ -28,6 +28,7 @@ VERSION {
 		clock_getres;
 		__vdso_clock_getres;
 		__vdso_sgx_enter_enclave;
+		__vdso_fccmp_noop;
 	local: *;
 	};
 }

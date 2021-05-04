@@ -26,4 +26,9 @@ config FCCMP_NT
 	help
 	  This relies on AVX2 and is only available for x86_64.
 
+config FCCMP_VDSO
+	bool "Provide vDSO functions as a comparison to the fastcall mechanism"
+	default y
+	depends on X86
+
 endmenu

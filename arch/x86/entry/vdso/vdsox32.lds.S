@@ -22,6 +22,7 @@ VERSION {
 		__vdso_getcpu;
 		__vdso_time;
 		__vdso_clock_getres;
+		__vdso_fccmp_noop;
 	local: *;
 	};
 }

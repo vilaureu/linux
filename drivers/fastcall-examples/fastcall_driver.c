@@ -96,7 +96,7 @@ static int fce_open(struct inode *inode, struct file *file)
 /*
  * register_and_copy - registers a fastcall function and copies the ioctl_args to user space
  *
- * Return negative error number, 0 on success and 
+ * Return negative error number, 0 on success and
  * 1 if the registration succeeded and the copy operation failed.
  *
  * In the last case, the user program has to locate the function mapping itself afterwards,

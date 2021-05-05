@@ -13,8 +13,11 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/random.h>
 #include <asm/fastcall.h>
 #include <asm/barrier.h>
+#include <asm/page_types.h>
+#include <asm/page_64_types.h>
 
 #define NR_ENTRIES                                                             \
 	((PAGE_SIZE - sizeof(struct mutex)) / sizeof(struct fastcall_entry))
@@ -222,7 +225,7 @@ fail_create:
  * setup_fastcall_page - insert a page with fastcall function pointers into user space
  *
  * Memory layout of the fastcall pages (for 4-level page tables):
- * 
+ *
  *            1 << 64 +---------------------+
  *                    | kernel space        |
  * 0xffff800000000000 +---------------------+
@@ -389,11 +392,17 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 	struct vm_unmapped_area_info info = {
 		.flags = 0,
 		.length = len,
-		.low_limit = TASK_SIZE_MAX, // TODO randomize
+		.low_limit = TASK_SIZE_MAX,
 		.high_limit = FC_STACK_BOTTOM,
 		.align_mask = 0,
 		.align_offset = 0,
 	};
+
+	// randomized lower limit of fastcall mappings
+	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
+		info.low_limit +=
+			PAGE_ALIGN((get_random_long() &
+				    ((1UL << (__VIRTUAL_MASK_SHIFT - 2)) - 1)));
 
 	addr = vm_unmapped_area(&info);
 	if (IS_ERR_VALUE(addr))

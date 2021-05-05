@@ -101,8 +101,6 @@ static vm_fault_t fastcall_fault(const struct vm_special_mapping *sm,
 
 /*
  * table_mapping - mapping for the fastcall table
- *
- * TODO mutex_destroy for CONFIG_DEBUG_MUTEXES
  */
 SPECIAL_MAPPING(table)
 
@@ -192,6 +190,10 @@ static int insert_table(struct mm_struct *mm)
 		return -ENOMEM;
 
 	table = kmap(page);
+	/*
+	 * This mutex will never get destroyed.
+	 * Fortunatelly, mutices are not required to be destroyed.
+	 */
 	mutex_init(&table->mutex);
 	for (i = 0; i < NR_ENTRIES; i++)
 		table->entries[i].fn_ptr = (void *)fastcall_noop;

@@ -28,7 +28,12 @@
 #endif
 
 #define NR_FC_ATTRIBS 3
+#ifdef CONFIG_DEBUG_MUTEXES
+// Mutices are slightly larger with debug info
+#define FC_NR_ENTRIES 126
+#else
 #define FC_NR_ENTRIES 127
+#endif
 #define FC_ENTRY_SIZE ((1 + NR_FC_ATTRIBS) * 8)
 
 #endif /* CONFIG_FASTCALL */

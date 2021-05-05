@@ -2783,27 +2783,28 @@ static inline vm_fault_t vmf_error(int err)
 struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 			 unsigned int foll_flags);
 
-#define FOLL_WRITE	0x01	/* check pte is writable */
-#define FOLL_TOUCH	0x02	/* mark page accessed */
-#define FOLL_GET	0x04	/* do get_page on page */
-#define FOLL_DUMP	0x08	/* give error on hole if it would be zero */
-#define FOLL_FORCE	0x10	/* get_user_pages read/write w/o permission */
-#define FOLL_NOWAIT	0x20	/* if a disk transfer is needed, start the IO
-				 * and return without waiting upon it */
-#define FOLL_POPULATE	0x40	/* fault in page */
-#define FOLL_SPLIT	0x80	/* don't return transhuge pages, split them */
-#define FOLL_HWPOISON	0x100	/* check page is hwpoisoned */
-#define FOLL_NUMA	0x200	/* force NUMA hinting page fault */
-#define FOLL_MIGRATION	0x400	/* wait for page to replace migration entry */
-#define FOLL_TRIED	0x800	/* a retry, previous pass started an IO */
-#define FOLL_MLOCK	0x1000	/* lock present pages */
-#define FOLL_REMOTE	0x2000	/* we are working on non-current tsk/mm */
-#define FOLL_COW	0x4000	/* internal GUP flag */
-#define FOLL_ANON	0x8000	/* don't do file mappings */
-#define FOLL_LONGTERM	0x10000	/* mapping lifetime is indefinite: see below */
-#define FOLL_SPLIT_PMD	0x20000	/* split huge pmd before returning */
-#define FOLL_PIN	0x40000	/* pages must be released via unpin_user_page */
-#define FOLL_FAST_ONLY	0x80000	/* gup_fast: prevent fall-back to slow gup */
+#define FOLL_WRITE	0x01		/* check pte is writable */
+#define FOLL_TOUCH	0x02		/* mark page accessed */
+#define FOLL_GET	0x04		/* do get_page on page */
+#define FOLL_DUMP	0x08		/* give error on hole if it would be zero */
+#define FOLL_FORCE	0x10		/* get_user_pages read/write w/o permission */
+#define FOLL_NOWAIT	0x20		/* if a disk transfer is needed, start the IO
+					 * and return without waiting upon it */
+#define FOLL_POPULATE	0x40		/* fault in page */
+#define FOLL_SPLIT	0x80		/* don't return transhuge pages, split them */
+#define FOLL_HWPOISON	0x100		/* check page is hwpoisoned */
+#define FOLL_NUMA	0x200		/* force NUMA hinting page fault */
+#define FOLL_MIGRATION	0x400		/* wait for page to replace migration entry */
+#define FOLL_TRIED	0x800		/* a retry, previous pass started an IO */
+#define FOLL_MLOCK	0x1000		/* lock present pages */
+#define FOLL_REMOTE	0x2000		/* we are working on non-current tsk/mm */
+#define FOLL_COW	0x4000		/* internal GUP flag */
+#define FOLL_ANON	0x8000		/* don't do file mappings */
+#define FOLL_LONGTERM	0x10000		/* mapping lifetime is indefinite: see below */
+#define FOLL_SPLIT_PMD	0x20000		/* split huge pmd before returning */
+#define FOLL_PIN	0x40000		/* pages must be released via unpin_user_page */
+#define FOLL_FAST_ONLY	0x80000		/* gup_fast: prevent fall-back to slow gup */
+#define FOLL_FASTCALL	0x100000	/* follow fastcall pages */
 
 /*
  * FOLL_PIN and FOLL_LONGTERM may be used in various combinations with each

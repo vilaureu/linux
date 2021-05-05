@@ -168,7 +168,8 @@ void fastcall_remove_mapping(unsigned long addr)
 		// Make do_munmap possible
 		vma->vm_private_data = (void *)&unmappable_mapping;
 
-	WARN_ON(do_munmap(mm, addr, vma->vm_end - vma->vm_start, NULL));
+	WARN_ON(do_munmap(mm, vma->vm_start, vma->vm_end - vma->vm_start,
+			  NULL));
 }
 EXPORT_SYMBOL(fastcall_remove_mapping);
 
@@ -275,8 +276,9 @@ static struct fastcall_table *map_table(struct page **page)
 	BUILD_BUG_ON(FC_NR_ENTRIES != NR_ENTRIES);
 	BUILD_BUG_ON(sizeof(struct fastcall_entry) != FC_ENTRY_SIZE);
 
-	nr_pages = pin_user_pages(FASTCALL_ADDR, 1, FOLL_TOUCH, page, NULL);
-	if (nr_pages != 1) {
+	nr_pages = pin_user_pages(FASTCALL_ADDR, 1, FOLL_TOUCH | FOLL_FASTCALL,
+				  page, NULL);
+	if (WARN_ON(nr_pages != 1)) {
 		if (nr_pages < 0)
 			err = nr_pages;
 		else

@@ -721,6 +721,11 @@ static struct page *follow_page_mask(struct vm_area_struct *vma,
 	struct page *page;
 	struct mm_struct *mm = vma->vm_mm;
 
+#ifdef CONFIG_FASTCALL
+	if (!!(flags & FOLL_FASTCALL) != (address >= TASK_SIZE_MAX))
+		return ERR_PTR(-EINVAL);
+#endif
+	
 	ctx->page_mask = 0;
 
 	/* make this handle hugepd */

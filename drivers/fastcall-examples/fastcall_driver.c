@@ -80,20 +80,6 @@ static struct device *fce_device;
 static struct page *fce_pages[1];
 
 /*
- * fce_open() - open the device
- * TODO: remove if it stays empty
- */
-static int fce_open(struct inode *inode, struct file *file)
-{
-	// TODO decide if only device should only be opened writable
-	// if (!(file->f_mode & FMODE_WRITE)) {
-	// 	return -EACCES;
-	// }
-
-	return 0;
-}
-
-/*
  * register_and_copy - registers a fastcall function and copies the ioctl_args to user space
  *
  * Return negative error number, 0 on success and
@@ -335,7 +321,8 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		ret = array_example(args, fce_array);
 		break;
 	case FCE_IOCTL_NT:
-		if (boot_cpu_has(X86_FEATURE_AVX2) && boot_cpu_has(X86_FEATURE_AVX))
+		if (boot_cpu_has(X86_FEATURE_AVX2) &&
+		    boot_cpu_has(X86_FEATURE_AVX))
 			ret = array_example(args, fce_array_nt);
 		break;
 	}
@@ -355,7 +342,6 @@ static int __init fce_init(void)
 	void *addr;
 	static struct file_operations fops = {
 		.owner = THIS_MODULE,
-		.open = fce_open,
 		.unlocked_ioctl = fce_ioctl,
 	};
 

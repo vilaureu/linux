@@ -220,21 +220,21 @@ fail_create:
 /*
  * setup_fastcall_page - insert a page with fastcall function pointers into user space
  *
- * Memory layout of the fastcall pages:
- *
- * TODO update
+ * Memory layout of the fastcall pages (for 4-level page tables):
  * 
- * 0xffffffffffffffff +--------------------+
- *                    | kernel space       |
- * 0xffff800000000000 +--------------------+
- *      non-canonical | hole               |
- *     0x7fffffffffff +--------------------+
- *           one page | fastcall table     |
- *      FASTCALL_ADDR +--------------------+
- *   one page per CPU | fastcall stacks    |
- *    FC_STACK_BOTTOM +--------------------+
- *                    | rest of user space |
- *                0x0 +--------------------+
+ *            1 << 64 +---------------------+
+ *                    | kernel space        |
+ * 0xffff800000000000 +---------------------+
+ *      non-canonical | hole                |
+ *     0x800000000000 +---------------------+
+ *           one page | fastcall table      |
+ *      FASTCALL_ADDR +---------------------+
+ *   one page per CPU | fastcall stacks     |
+ *    FC_STACK_BOTTOM +---------------------+
+ *                    | other fastcall vmas |
+ *      TASK_SIZE_MAX +---------------------+
+ *                    | rest of user space  |
+ *                0x0 +---------------------+
  */
 int setup_fastcall_page(void)
 {

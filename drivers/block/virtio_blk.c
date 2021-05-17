@@ -18,6 +18,9 @@
 #include <uapi/linux/virtio_ring.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/virtio.h>
+#ifdef CONFIG_VIRTIO_BLK_RDTSC
+#include <asm/msr.h>
+#endif
 
 #define PART_BITS 4
 #define VQ_NAME_LEN 16
@@ -216,6 +219,15 @@ static void virtio_commit_rqs(struct blk_mq_hw_ctx *hctx)
 		virtqueue_notify(vq->vq);
 }
 
+#ifdef CONFIG_VIRTIO_BLK_RDTSC
+#define RDTSC(name)                                                            \
+	do {                                                                   \
+		name = rdtsc_ordered();                                   \
+	} while (0)
+#else
+#define RDTSC(name)
+#endif
+
 static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 			   const struct blk_mq_queue_data *bd)
 {
@@ -229,8 +241,13 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	bool notify = false;
 	bool unmap = false;
 	u32 type;
+#ifdef CONFIG_VIRTIO_BLK_RDTSC
+	unsigned long long enter_tsc, switch_tsc, start_rq_tsc, map_sg_tsc,
+		add_req_tsc, restore_tsc, ret_tsc;
+#endif
 
 	trace_virtio_queue_rq_enter(bd->rq->cmd_flags);
+	RDTSC(enter_tsc);
 
 	BUG_ON(req->nr_phys_segments + 2 > vblk->sg_elems);
 
@@ -258,6 +275,7 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	}
 
 	trace_virtio_queue_rq_switch(type);
+	RDTSC(switch_tsc);
 
 	vbr->out_hdr.type = cpu_to_virtio32(vblk->vdev, type);
 	vbr->out_hdr.sector = type ?
@@ -267,6 +285,7 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	blk_mq_start_request(req);
 
 	trace_virtio_queue_rq_start_rq(type);
+	RDTSC(start_rq_tsc);
 
 	if (type == VIRTIO_BLK_T_DISCARD || type == VIRTIO_BLK_T_WRITE_ZEROES) {
 		err = virtblk_setup_discard_write_zeroes(req, unmap);
@@ -283,6 +302,7 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	}
 
 	trace_virtio_queue_rq_map_sg(type);
+	RDTSC(map_sg_tsc);
 
 	spin_lock_irqsave(&vblk->vqs[qid].lock, flags);
 	err = virtblk_add_req(vblk->vqs[qid].vq, vbr, vbr->sg, num);
@@ -305,15 +325,28 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	}
 
 	trace_virtio_queue_rq_add_req(type);
+	RDTSC(add_req_tsc);
 
 	if (bd->last && virtqueue_kick_prepare(vblk->vqs[qid].vq))
 		notify = true;
 	spin_unlock_irqrestore(&vblk->vqs[qid].lock, flags);
 
 	trace_virtio_queue_rq_restore(type);
+	RDTSC(restore_tsc);
 
 	if (notify)
 		virtqueue_notify(vblk->vqs[qid].vq);
+
+	RDTSC(ret_tsc);
+
+#ifdef CONFIG_VIRTIO_BLK_RDTSC
+	pr_debug(
+		"virtio_blk: rdtsc with type %d: switch_tsc %lld cylces, start_rq %lld cycles, map_sg %lld cycles, add_req %lld cycles, restore_tsc %lld cycles, ret %lld cycles",
+		type, switch_tsc - enter_tsc, start_rq_tsc - enter_tsc,
+		map_sg_tsc - enter_tsc, add_req_tsc - enter_tsc,
+		restore_tsc - enter_tsc, ret_tsc - enter_tsc);
+#endif
+
 	return BLK_STS_OK;
 }
 

@@ -431,6 +431,11 @@ config VIRTIO_BLK_TRACE
 	depends on VIRTIO_BLK
 	default y
 
+config VIRTIO_BLK_RDTSC
+	bool "Measure virtio block driver latency using RDTSCP"
+	depends on VIRTIO_BLK && X86
+	default y
+
 config BLK_DEV_RBD
 	tristate "Rados block device (RBD)"
 	depends on INET && BLOCK

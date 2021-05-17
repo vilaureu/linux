@@ -16,6 +16,8 @@
 #include <linux/blk-mq-virtio.h>
 #include <linux/numa.h>
 #include <uapi/linux/virtio_ring.h>
+#define CREATE_TRACE_POINTS
+#include <trace/events/virtio.h>
 
 #define PART_BITS 4
 #define VQ_NAME_LEN 16
@@ -228,6 +230,8 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	bool unmap = false;
 	u32 type;
 
+	trace_virtio_queue_rq_enter(bd->rq->cmd_flags);
+
 	BUG_ON(req->nr_phys_segments + 2 > vblk->sg_elems);
 
 	switch (req_op(req)) {
@@ -253,12 +257,16 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 		return BLK_STS_IOERR;
 	}
 
+	trace_virtio_queue_rq_switch(type);
+
 	vbr->out_hdr.type = cpu_to_virtio32(vblk->vdev, type);
 	vbr->out_hdr.sector = type ?
 		0 : cpu_to_virtio64(vblk->vdev, blk_rq_pos(req));
 	vbr->out_hdr.ioprio = cpu_to_virtio32(vblk->vdev, req_get_ioprio(req));
 
 	blk_mq_start_request(req);
+
+	trace_virtio_queue_rq_start_rq(type);
 
 	if (type == VIRTIO_BLK_T_DISCARD || type == VIRTIO_BLK_T_WRITE_ZEROES) {
 		err = virtblk_setup_discard_write_zeroes(req, unmap);
@@ -273,6 +281,8 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 		else
 			vbr->out_hdr.type |= cpu_to_virtio32(vblk->vdev, VIRTIO_BLK_T_IN);
 	}
+
+	trace_virtio_queue_rq_map_sg(type);
 
 	spin_lock_irqsave(&vblk->vqs[qid].lock, flags);
 	err = virtblk_add_req(vblk->vqs[qid].vq, vbr, vbr->sg, num);
@@ -294,9 +304,13 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 		}
 	}
 
+	trace_virtio_queue_rq_add_req(type);
+
 	if (bd->last && virtqueue_kick_prepare(vblk->vqs[qid].vq))
 		notify = true;
 	spin_unlock_irqrestore(&vblk->vqs[qid].lock, flags);
+
+	trace_virtio_queue_rq_restore(type);
 
 	if (notify)
 		virtqueue_notify(vblk->vqs[qid].vq);

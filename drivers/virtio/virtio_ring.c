@@ -1707,6 +1707,29 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 					out_sgs, in_sgs, data, ctx, gfp);
 }
 
+int virtqueue_add_sgs_total(struct virtqueue *_vq,
+		      struct scatterlist *sgs[],
+		      unsigned int out_sgs,
+		      unsigned int in_sgs,
+		      void *data,
+		      gfp_t gfp)
+{
+	unsigned int i, total_sg = 0;
+	int err;
+
+	/* Count them first. */
+	for (i = 0; i < out_sgs + in_sgs; i++) {
+		struct scatterlist *sg;
+
+		for (sg = sgs[i]; sg; sg = sg_next(sg))
+			total_sg++;
+	}
+	err = virtqueue_add(_vq, sgs, total_sg, out_sgs, in_sgs,
+			     data, NULL, gfp);
+	return err ? err : total_sg;
+}
+EXPORT_SYMBOL_GPL(virtqueue_add_sgs_total);
+
 /**
  * virtqueue_add_sgs - expose buffers to other end
  * @_vq: the struct virtqueue we're talking about.
@@ -1728,17 +1751,11 @@ int virtqueue_add_sgs(struct virtqueue *_vq,
 		      void *data,
 		      gfp_t gfp)
 {
-	unsigned int i, total_sg = 0;
+	int total_sg;
 
-	/* Count them first. */
-	for (i = 0; i < out_sgs + in_sgs; i++) {
-		struct scatterlist *sg;
-
-		for (sg = sgs[i]; sg; sg = sg_next(sg))
-			total_sg++;
-	}
-	return virtqueue_add(_vq, sgs, total_sg, out_sgs, in_sgs,
-			     data, NULL, gfp);
+	total_sg = virtqueue_add_sgs_total(_vq, sgs, out_sgs, in_sgs,
+			     data, gfp);
+	return total_sg < 0 ? total_sg : 0;
 }
 EXPORT_SYMBOL_GPL(virtqueue_add_sgs);
 

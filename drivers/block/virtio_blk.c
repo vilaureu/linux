@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 //#define DEBUG
+#include "linux/irqflags.h"
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 #include <linux/blkdev.h>
@@ -113,7 +114,7 @@ static int virtblk_add_req(struct virtqueue *vq, struct virtblk_req *vbr,
 	sg_init_one(&status, &vbr->status, sizeof(vbr->status));
 	sgs[num_out + num_in++] = &status;
 
-	return virtqueue_add_sgs(vq, sgs, num_out, num_in, vbr, GFP_ATOMIC);
+	return virtqueue_add_sgs_total(vq, sgs, num_out, num_in, vbr, GFP_ATOMIC);
 }
 
 static int virtblk_setup_discard_write_zeroes(struct request *req, bool unmap)
@@ -234,17 +235,19 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct virtio_blk *vblk = hctx->queue->queuedata;
 	struct request *req = bd->rq;
 	struct virtblk_req *vbr = blk_mq_rq_to_pdu(req);
-	unsigned long flags;
+	unsigned long gflags, flags;
 	unsigned int num;
 	int qid = hctx->queue_num;
-	int err;
+	int err, total_sg;
 	bool notify = false;
 	bool unmap = false;
 	u32 type;
 #ifdef CONFIG_VIRTIO_BLK_RDTSC
 	unsigned long long enter_tsc, switch_tsc, start_rq_tsc, map_sg_tsc,
-		add_req_tsc, restore_tsc, ret_tsc;
+		pre_add_req_tsc, add_req_tsc, restore_tsc, ret_tsc;
 #endif
+
+	local_irq_save(gflags);
 
 	trace_virtio_queue_rq_enter(bd->rq->cmd_flags);
 	RDTSC(enter_tsc);
@@ -271,6 +274,7 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 		break;
 	default:
 		WARN_ON_ONCE(1);
+		local_irq_restore(gflags);
 		return BLK_STS_IOERR;
 	}
 
@@ -289,8 +293,10 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 	if (type == VIRTIO_BLK_T_DISCARD || type == VIRTIO_BLK_T_WRITE_ZEROES) {
 		err = virtblk_setup_discard_write_zeroes(req, unmap);
-		if (err)
+		if (err) {
+			local_irq_restore(gflags);
 			return BLK_STS_RESOURCE;
+		}
 	}
 
 	num = blk_rq_map_sg(hctx->queue, req, vbr->sg);
@@ -305,16 +311,20 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	RDTSC(map_sg_tsc);
 
 	spin_lock_irqsave(&vblk->vqs[qid].lock, flags);
-	err = virtblk_add_req(vblk->vqs[qid].vq, vbr, vbr->sg, num);
-	if (err) {
+
+	RDTSC(pre_add_req_tsc);
+
+	total_sg = virtblk_add_req(vblk->vqs[qid].vq, vbr, vbr->sg, num);
+	if (total_sg < 0) {
 		virtqueue_kick(vblk->vqs[qid].vq);
 		/* Don't stop the queue if -ENOMEM: we may have failed to
 		 * bounce the buffer due to global resource outage.
 		 */
-		if (err == -ENOSPC)
+		if (total_sg == -ENOSPC)
 			blk_mq_stop_hw_queue(hctx);
 		spin_unlock_irqrestore(&vblk->vqs[qid].lock, flags);
-		switch (err) {
+		local_irq_restore(gflags);
+		switch (total_sg) {
 		case -ENOSPC:
 			return BLK_STS_DEV_RESOURCE;
 		case -ENOMEM:
@@ -339,11 +349,16 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 	RDTSC(ret_tsc);
 
+	local_irq_restore(gflags);
+
 #ifdef CONFIG_VIRTIO_BLK_RDTSC
 	pr_debug(
-		"virtio_blk: rdtsc with type %d: switch_tsc %lld cylces, start_rq %lld cycles, map_sg %lld cycles, add_req %lld cycles, restore_tsc %lld cycles, ret %lld cycles",
-		type, switch_tsc - enter_tsc, start_rq_tsc - enter_tsc,
-		map_sg_tsc - enter_tsc, add_req_tsc - enter_tsc,
+		"virtio_blk: rdtsc: type %d, notify %d, total_sg %d, switch_tsc %lld cycles, "
+		"start_rq %lld cycles, map_sg %lld cycles, pre_add_req %lld cycles, add_req %lld cycles, restore_tsc "
+		"%lld cycles, ret %lld cycles",
+		type, notify, total_sg, switch_tsc - enter_tsc,
+		start_rq_tsc - enter_tsc, map_sg_tsc - enter_tsc,
+		pre_add_req_tsc - enter_tsc, add_req_tsc - enter_tsc,
 		restore_tsc - enter_tsc, ret_tsc - enter_tsc);
 #endif
 

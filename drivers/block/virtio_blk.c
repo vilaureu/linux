@@ -223,14 +223,14 @@ static void virtio_commit_rqs(struct blk_mq_hw_ctx *hctx)
 #ifdef CONFIG_VIRTIO_BLK_RDTSC
 #define RDTSC(name)                                                            \
 	do {                                                                   \
-		name = rdtsc_ordered();                                   \
+		name##_tsc = rdtsc_ordered();                                  \
 	} while (0)
 #else
 #define RDTSC(name)
 #endif
 
 static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
-			   const struct blk_mq_queue_data *bd)
+				    const struct blk_mq_queue_data *bd)
 {
 	struct virtio_blk *vblk = hctx->queue->queuedata;
 	struct request *req = bd->rq;
@@ -244,13 +244,13 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	u32 type;
 #ifdef CONFIG_VIRTIO_BLK_RDTSC
 	unsigned long long enter_tsc, switch_tsc, start_rq_tsc, map_sg_tsc,
-		pre_add_req_tsc, add_req_tsc, restore_tsc, ret_tsc;
+		spin_lock_tsc, add_req_tsc, restore_tsc, notify_tsc;
 #endif
 
 	local_irq_save(gflags);
 
 	trace_virtio_queue_rq_enter(bd->rq->cmd_flags);
-	RDTSC(enter_tsc);
+	RDTSC(enter);
 
 	BUG_ON(req->nr_phys_segments + 2 > vblk->sg_elems);
 
@@ -279,17 +279,16 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	}
 
 	trace_virtio_queue_rq_switch(type);
-	RDTSC(switch_tsc);
+	RDTSC(switch);
 
 	vbr->out_hdr.type = cpu_to_virtio32(vblk->vdev, type);
-	vbr->out_hdr.sector = type ?
-		0 : cpu_to_virtio64(vblk->vdev, blk_rq_pos(req));
+	vbr->out_hdr.sector =
+		type ? 0 : cpu_to_virtio64(vblk->vdev, blk_rq_pos(req));
 	vbr->out_hdr.ioprio = cpu_to_virtio32(vblk->vdev, req_get_ioprio(req));
 
 	blk_mq_start_request(req);
-
 	trace_virtio_queue_rq_start_rq(type);
-	RDTSC(start_rq_tsc);
+	RDTSC(start_rq);
 
 	if (type == VIRTIO_BLK_T_DISCARD || type == VIRTIO_BLK_T_WRITE_ZEROES) {
 		err = virtblk_setup_discard_write_zeroes(req, unmap);
@@ -300,21 +299,25 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 	}
 
 	num = blk_rq_map_sg(hctx->queue, req, vbr->sg);
+	trace_virtio_queue_rq_map_sg(type);
+	RDTSC(map_sg);
+
 	if (num) {
 		if (rq_data_dir(req) == WRITE)
-			vbr->out_hdr.type |= cpu_to_virtio32(vblk->vdev, VIRTIO_BLK_T_OUT);
+			vbr->out_hdr.type |=
+				cpu_to_virtio32(vblk->vdev, VIRTIO_BLK_T_OUT);
 		else
-			vbr->out_hdr.type |= cpu_to_virtio32(vblk->vdev, VIRTIO_BLK_T_IN);
+			vbr->out_hdr.type |=
+				cpu_to_virtio32(vblk->vdev, VIRTIO_BLK_T_IN);
 	}
 
-	trace_virtio_queue_rq_map_sg(type);
-	RDTSC(map_sg_tsc);
-
 	spin_lock_irqsave(&vblk->vqs[qid].lock, flags);
-
-	RDTSC(pre_add_req_tsc);
+	RDTSC(spin_lock);
 
 	total_sg = virtblk_add_req(vblk->vqs[qid].vq, vbr, vbr->sg, num);
+	trace_virtio_queue_rq_add_req(type);
+	RDTSC(add_req);
+
 	if (total_sg < 0) {
 		virtqueue_kick(vblk->vqs[qid].vq);
 		/* Don't stop the queue if -ENOMEM: we may have failed to
@@ -334,32 +337,29 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 		}
 	}
 
-	trace_virtio_queue_rq_add_req(type);
-	RDTSC(add_req_tsc);
-
 	if (bd->last && virtqueue_kick_prepare(vblk->vqs[qid].vq))
 		notify = true;
 	spin_unlock_irqrestore(&vblk->vqs[qid].lock, flags);
-
 	trace_virtio_queue_rq_restore(type);
-	RDTSC(restore_tsc);
+	RDTSC(restore);
 
 	if (notify)
 		virtqueue_notify(vblk->vqs[qid].vq);
 
-	RDTSC(ret_tsc);
+	RDTSC(notify);
 
 	local_irq_restore(gflags);
 
 #ifdef CONFIG_VIRTIO_BLK_RDTSC
+#define DIFF(name) (name##_tsc - enter_tsc)
 	pr_debug(
-		"virtio_blk: rdtsc: type %d, notify %d, total_sg %d, switch_tsc %lld cycles, "
-		"start_rq %lld cycles, map_sg %lld cycles, pre_add_req %lld cycles, add_req %lld cycles, restore_tsc "
-		"%lld cycles, ret %lld cycles",
-		type, notify, total_sg, switch_tsc - enter_tsc,
-		start_rq_tsc - enter_tsc, map_sg_tsc - enter_tsc,
-		pre_add_req_tsc - enter_tsc, add_req_tsc - enter_tsc,
-		restore_tsc - enter_tsc, ret_tsc - enter_tsc);
+		"virtio_blk: rdtsc: type %d, notify %d, total_sg %d, switch %lld cycles, "
+		"blk_mq_start_request %lld cycles, blk_rq_map_sg %lld cycles, "
+		"spin_lock_irqsave %lld cycles, virtblk_add_req %lld cycles, "
+		"spin_unlock_irqrestore %lld cycles, virtqueue_notify %lld cycles",
+		type, notify, total_sg, DIFF(switch), DIFF(start_rq),
+		DIFF(map_sg), DIFF(spin_lock), DIFF(add_req), DIFF(restore),
+		DIFF(notify));
 #endif
 
 	return BLK_STS_OK;

@@ -15,7 +15,7 @@
 		    TP_printk("0x%08lx", (unsigned long)__entry->type));
 #else
 #define TRACE_VIRTIO(name)                                                     \
-	static __always_inline void trace_virtio_queue_rq_##name(u32)          \
+	static __always_inline void trace_virtio_queue_rq_##name(u32 _)        \
 	{                                                                      \
 	}
 #endif

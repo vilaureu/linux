@@ -167,7 +167,7 @@ static inline void arch_dup_pkeys(struct mm_struct *oldmm,
 #ifdef CONFIG_FASTCALL
 extern int fastcall_dup_table(struct mm_struct *, struct mm_struct *);
 #else
-int fastcall_dup_table(struct mm_struct *, struct mm_struct *)
+static inline int fastcall_dup_table(struct mm_struct *oldmm, struct mm_struct *mm)
 {
 	return 0;
 }

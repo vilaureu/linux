@@ -105,7 +105,7 @@ static inline bool in_fastcall_region(unsigned long start, size_t len)
 
 #else
 
-int setup_fastcall_page(void)
+static inline int setup_fastcall_page(void)
 {
 	return 0;
 }

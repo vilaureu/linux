@@ -603,8 +603,10 @@ int register_fastcall(struct fastcall_reg_args *args)
 		break;
 	}
 
-	if (i >= NR_ENTRIES)
-		ret = -EINVAL; // The fastcall table is full
+	if (i >= NR_ENTRIES) {
+		ret = -ENOSPC; // The fastcall table is full
+		goto fail_entry;
+	}
 
 	// Past last failure possibility
 	args->index = i;
@@ -614,6 +616,7 @@ int register_fastcall(struct fastcall_reg_args *args)
 	fn_unmap->module = args->module;
 	*fn_unmap_ptr = fn_unmap;
 
+fail_entry:
 	unmap_table(table, page);
 fail_map:
 	if (ret < 0)

@@ -1546,6 +1546,7 @@ static struct xol_area *get_xol_area(void)
 void uprobe_clear_state(struct mm_struct *mm)
 {
 	struct xol_area *area = mm->uprobes_state.xol_area;
+	struct vm_area_struct *vma;
 
 	mutex_lock(&delayed_uprobe_lock);
 	delayed_uprobe_remove(NULL, mm);
@@ -1553,6 +1554,15 @@ void uprobe_clear_state(struct mm_struct *mm)
 
 	if (!area)
 		return;
+
+	/*
+	 * Prevent dangling vm_private_data pointer in vma after
+	 * area is freed with xol_mapping inside.
+	 */
+	vma = find_vma(mm, area->vaddr);
+	if (!WARN_ON(!vma || vma->vm_start != area->vaddr)) {
+		vma->vm_private_data = NULL;
+	}
 
 	put_page(area->pages[0]);
 	kfree(area->bitmap);

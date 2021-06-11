@@ -3421,7 +3421,7 @@ static void special_mapping_close(struct vm_area_struct *vma)
 {
 	struct vm_special_mapping *sm = vma->vm_private_data;
 	
-	if (sm->close)
+	if (sm && sm->close)
 		sm->close(sm, vma);
 }
 
@@ -3432,7 +3432,7 @@ static int special_mapping_may_unmap(struct vm_area_struct *vma)
 {
 	struct vm_special_mapping *sm = vma->vm_private_data;
 	
-	if (sm->may_unmap)
+	if (sm && sm->may_unmap)
 		return sm->may_unmap(sm, vma);
 	
 	return 0;

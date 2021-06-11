@@ -442,6 +442,7 @@ static void fastcall_function_close(const struct vm_special_mapping *sm,
 		kfree(fn_unmap);
 	}
 	kfree(sm);
+	vma->vm_private_data = NULL;
 }
 
 /*

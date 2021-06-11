@@ -2,9 +2,11 @@
 #ifndef _ASM_X86_FASTCALL_H
 #define _ASM_X86_FASTCALL_H
 
-#include <asm/page_types.h>
-
 #define NR_fastcall 442
+
+#ifdef __KERNEL__
+
+#include <asm/page_types.h>
 
 #ifdef CONFIG_FASTCALL
 
@@ -119,3 +121,4 @@ static inline bool in_fastcall_region(unsigned long start, size_t len)
 
 #endif /* __ASSEMBLER__ */
 #endif /* _ASM_X86_FASTCALL_H */
+#endif /* __KERNEL__ */

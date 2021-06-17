@@ -32,6 +32,11 @@ struct array_args {
 	unsigned index;
 };
 
+/*
+ * mwait_args - struct used for the MWAIT ioctl handler
+ */
+typedef struct array_args mwait_args_struct;
+
 #define FCE_TYPE 0xDE
 #define FCE_IOCTL(cmd) (_IOR(FCE_TYPE, cmd, struct ioctl_args))
 #define FCE_ARRAY_LIKE(cmd) ((_IOR(FCE_TYPE, cmd, struct array_args)))
@@ -40,5 +45,6 @@ struct array_args {
 #define FCE_IOCTL_PRIV (FCE_IOCTL(2))
 #define FCE_IOCTL_ARRAY (FCE_ARRAY_LIKE(3))
 #define FCE_IOCTL_NT (FCE_ARRAY_LIKE(4))
+#define FCE_IOCTL_MWAIT (_IOR(FCE_TYPE, 5, mwait_args_struct))
 
 #endif /* _FASTCALL_EXAMPLES_H */

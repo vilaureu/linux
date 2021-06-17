@@ -28,6 +28,7 @@ const void fce_write_ptr(void);
 const void fce_functions_end(void);
 const void fce_array(void);
 const void fce_array_nt(void);
+const void fce_mwait(void);
 
 /*
  * FCE_FUNCTIONS_SIZE - size of the fastcall function text segment in bytes
@@ -108,19 +109,23 @@ static struct fastcall_reg_args args_for(const void (*fn)(void))
 	};
 }
 
-static void private_unmap(void *priv)
+static void single_unmap(void *priv)
 {
 	fastcall_remove_mapping((unsigned long)priv);
 }
 
-static void private_free(void *priv)
+static void single_free(void *priv)
 {
 	// priv stores the address directly, nothing to free here
 }
 
-static const struct fastcall_fn_ops private_fn_ops = {
-	.unmap = private_unmap,
-	.free = private_free,
+/*
+ * single_fn_ops - frees a single mapping stored in the 
+ *                 (struct fastcall_reg_args)->priv pointer.
+ */
+static const struct fastcall_fn_ops single_fn_ops = {
+	.unmap = single_unmap,
+	.free = single_free,
 };
 
 /*
@@ -142,7 +147,7 @@ static long private_example(unsigned long args)
 	if (IS_ERR_VALUE(addr))
 		goto fail_create;
 
-	reg_args.ops = &private_fn_ops;
+	reg_args.ops = &single_fn_ops;
 	reg_args.priv = (void *)addr;
 	reg_args.attribs[0] = addr;
 	ret = register_and_copy(reg_args, args);
@@ -261,6 +266,67 @@ fail_malloc:
 }
 
 /*
+ * mwait_example - wait for a memory change using MWAIT
+ *
+ * This fastcall function shares a memory page with the application.
+ * It will listen for changes at the beginning of this page upon calling.
+ */
+static long mwait_example(unsigned long args)
+{
+	unsigned long shared_addr;
+	struct page *shared_page;
+	long ret;
+	struct fastcall_reg_args reg_args = args_for(fce_mwait);
+	mwait_args_struct *mwait_args;
+
+	shared_page = alloc_page(GFP_FASTCALL);
+	ret = -ENOMEM;
+	if (!shared_page)
+		goto fail_shared_alloc;
+
+	shared_addr = create_additional_mapping(&shared_page, 1, FASTCALL_VM_RW,
+						true);
+	ret = (long)shared_addr;
+	if (IS_ERR_VALUE(shared_addr))
+		goto fail_shared_create;
+
+	reg_args.ops = &single_fn_ops;
+	reg_args.priv = (void *)shared_addr;
+	reg_args.attribs[0] = shared_addr;
+
+	mwait_args = kzalloc(sizeof(mwait_args_struct), GFP_KERNEL);
+	ret = -ENOMEM;
+	if (!mwait_args)
+		goto fail_args_alloc;
+
+	ret = register_fastcall(&reg_args);
+	if (ret < 0)
+		goto fail_register;
+
+	mwait_args->fn_addr = reg_args.fn_addr;
+	mwait_args->fn_len = NR_FCE_PAGES * PAGE_SIZE;
+	mwait_args->shared_addr = shared_addr;
+	mwait_args->index = reg_args.index;
+
+	ret = 1;
+	if (copy_to_user((void *)args, mwait_args, sizeof(mwait_args_struct)))
+		goto fail_copy;
+
+	ret = 0;
+
+fail_copy:
+fail_register:
+	kfree(mwait_args);
+fail_args_alloc:
+	if (ret < 0)
+		remove_additional_mapping(shared_addr);
+fail_shared_create:
+	__free_page(shared_page);
+fail_shared_alloc:
+	return ret;
+}
+
+/*
  * fce_ioctl() - register the example fastcall specified by cmd
  */
 static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
@@ -287,6 +353,13 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		if (boot_cpu_has(X86_FEATURE_AVX2) &&
 		    boot_cpu_has(X86_FEATURE_AVX))
 			ret = array_example(args, fce_array_nt);
+		break;
+	case FCE_IOCTL_MWAIT:
+		// Same check as in kvm_can_mwait_in_guest()
+		if (boot_cpu_has(X86_FEATURE_MWAIT) &&
+		    !boot_cpu_has_bug(X86_BUG_MONITOR) &&
+		    boot_cpu_has(X86_FEATURE_ARAT))
+			ret = mwait_example(args);
 		break;
 	}
 

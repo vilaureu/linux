@@ -194,4 +194,50 @@ SYM_CODE_START_LOCAL(inval)
 	sysretq
 SYM_CODE_END(inval)
 
+/*
+ * fce_mwait - wait for a change at a memory address
+ *
+ * The first static argument specifies the address to monitor at.
+ * The first function argument specifies the expected value.
+ * This function returns 1 if the value in memory matches the supplied value.
+ * It thereby might wait using MWAIT for a change at the memory address.
+ * MWAIT will also be interrupted by timer events.
+ * If the value does not match until then, the function returns 0.
+ * This function clobbers some caller-saved registers.
+ */
+SYM_CODE_START(fce_mwait)
+	UNWIND_HINT_EMPTY
+	// Save return address
+	movq %rcx, %rdi
+
+	movq SARG0(%rax), %rax
+	
+	cmpq %rsi, (%rax)
+	je mwait_success
+
+	xorl %ecx, %ecx
+	xorl %edx, %edx
+	monitor
+
+	// Do not wait if target already matches
+	cmpq %rsi, (%rax)
+	je mwait_success
+
+	incl %ecx
+	movq %rax, %rdx
+	xorq %rax, %rax
+	mwait
+
+	cmpq %rsi, (%rdx)
+	sete %al
+
+mwait_out:
+	mov %rdi, %rcx
+	sysretq
+
+mwait_success:
+	movq $1, %rax
+	jmp mwait_out
+SYM_CODE_END(fce_mwait)
+
 SYM_INNER_LABEL(fce_functions_end, SYM_L_GLOBAL)

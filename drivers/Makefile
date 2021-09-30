@@ -11,6 +11,7 @@ obj-y				+= bus/
 
 obj-$(CONFIG_GENERIC_PHY)	+= phy/
 obj-y				+= fastcall-examples/
+obj-y				+= fastcall-template/
 
 # GPIO must come after pinctrl as gpios may need to mux pins etc
 obj-$(CONFIG_PINCTRL)		+= pinctrl/

@@ -1,6 +1,17 @@
 Linux kernel
 ============
 
+Fastcall
+--------
+
+The fastcall architecture is implemented in arch/x86/fastcall .
+An example driver is located at drivers/fastcall-examples .
+Have a look at Documentation/fastcall/Template.md before creating a new
+driver.
+
+General
+-------
+
 There are several guides for kernel developers and users. These guides can
 be rendered in a number of formats, like HTML and PDF. Please read
 Documentation/admin-guide/README.rst first.

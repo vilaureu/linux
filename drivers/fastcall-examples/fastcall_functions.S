@@ -7,12 +7,9 @@
 
 #include <linux/linkage.h>
 #include <asm/unwind_hints.h>
-#include <asm/segment.h>
-#include <asm/alternative-asm.h>
-#include <asm/cpufeatures.h>
 #include <asm-generic/errno-base.h>
 #include <asm/smap.h>
-#include <asm/fastcall.h>
+#include <asm/fastcall_module.h>
 
 #define SARG0 (1 * 8)
 #define SARG1 (2 * 8)
@@ -20,43 +17,6 @@
 #define ARG2 %rdx
 #define DATA_SIZE 64
 #define ARRAY_LENGTH (PAGE_SIZE / DATA_SIZE)
-
-/*
- * Set the stack pointer to the per-CPU stack.
- *
- * The user stack pointer is saved to reg. scratch_reg is clobbered.
- */
-.macro SETUP_STACK reg=%rdi, scratch_reg=%rax
-	/*
-	 * This is save because the user can neither change MSR_TSC_AUX nor the segment limit.
-	 *
-	 * Additionally, RDPID is save as this is never called comming from KVM.
-	 */
-	ALTERNATIVE "", "jmp rdpid", X86_FEATURE_RDPID
-	movq $__CPUNODE_SEG, \reg
-	lsl \reg, \reg
-	jmp cpu_number
-rdpid:
-	rdpid \reg
-cpu_number:
-	andq $VDSO_CPUNODE_MASK, \reg
-	imulq $(-PAGE_SIZE), \reg
-
-#ifdef CONFIG_X86_5LEVEL
-	ALTERNATIVE "jmp level4", "jmp level5", X86_FEATURE_LA57
-level4:
-	movq $((1 << 47) - 4096), \scratch_reg
-	jmp after_level
-level5:
-	movq $((1 << 56) - 4096), \scratch_reg
-after_level:
-#else
-	movq $FC_STACK_TOP, \scratch_reg
-#endif
-	
-	addq \scratch_reg, \reg
-	xchgq %rsp, \reg
-.endm
 
 /*
  * Setup code for the source and destination addresses of the array functions.
@@ -211,7 +171,7 @@ SYM_CODE_START(fce_mwait)
 	movq %rcx, %rdi
 
 	movq SARG0(%rax), %rax
-	
+
 	cmpq %rsi, (%rax)
 	je mwait_success
 

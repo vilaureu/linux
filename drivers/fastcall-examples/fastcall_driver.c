@@ -120,7 +120,7 @@ static void single_free(void *priv)
 }
 
 /*
- * single_fn_ops - frees a single mapping stored in the 
+ * single_fn_ops - frees a single mapping stored in the
  *                 (struct fastcall_reg_args)->priv pointer.
  */
 static const struct fastcall_fn_ops single_fn_ops = {
@@ -214,8 +214,8 @@ static long array_example(unsigned long args, const void (*fn)(void))
 
 	array_addr = create_additional_mapping(&array_page, 1, FASTCALL_VM_RW,
 					       false);
-	ret = (long)shared_addr;
-	if (IS_ERR_VALUE(shared_addr))
+	ret = (long)array_addr;
+	if (IS_ERR_VALUE(array_addr))
 		goto fail_array_create;
 
 	(*priv)[0] = shared_addr;
@@ -368,7 +368,7 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 
 /*
  * fce_init() - initialize this module
- * 
+ *
  * Add one "fastcall-examples" character device.
  */
 static int __init fce_init(void)

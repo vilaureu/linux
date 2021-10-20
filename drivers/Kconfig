@@ -238,5 +238,7 @@ source "drivers/most/Kconfig"
 
 source "drivers/fastcall-examples/Kconfig"
 
+source "drivers/fastcall-in-c/Kconfig"
+
 source "drivers/fastcall-template/Kconfig"
 endmenu

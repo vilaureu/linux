@@ -3,6 +3,7 @@
 #define _ASM_X86_FASTCALL_H
 
 #define NR_fastcall 442
+#define NR_FC_ATTRIBS 3
 
 #ifdef __KERNEL__
 
@@ -29,7 +30,6 @@
 #define FASTCALL_BOTTOM TASK_SIZE_MAX
 #endif
 
-#define NR_FC_ATTRIBS 3
 #ifdef CONFIG_DEBUG_MUTEXES
 // Mutices are slightly larger with debug info
 #define FC_NR_ENTRIES 126
@@ -120,5 +120,5 @@ static inline bool in_fastcall_region(unsigned long start, size_t len)
 #endif /* CONFIG_FASTCALL */
 
 #endif /* __ASSEMBLER__ */
-#endif /* _ASM_X86_FASTCALL_H */
 #endif /* __KERNEL__ */
+#endif /* _ASM_X86_FASTCALL_H */

@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+
+config FASTCALL_IN_C
+	tristate "Example fastcall driver for writing fastcall functions in C"
+	depends on FASTCALL
+	default m
+	help
+	  This driver provides examples and tools for writing fastcall functions
+		in C.

@@ -393,7 +393,7 @@ static int __init fce_init(void)
 		addr = kmap(fce_pages[page_id]);
 		count = min(FCE_FUNCTIONS_SIZE - page_id * PAGE_SIZE,
 			    PAGE_SIZE);
-		memcpy(addr, fce_functions_start, count);
+		memcpy(addr, fce_functions_start + page_id * PAGE_SIZE, count);
 		kunmap(fce_pages[page_id]);
 	}
 

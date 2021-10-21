@@ -438,6 +438,7 @@ void __init_or_module noinline apply_alternatives(struct alt_instr *start,
 		text_poke_early(instr, insn_buff, insn_buff_sz);
 	}
 }
+EXPORT_SYMBOL_GPL(apply_alternatives);
 
 #ifdef CONFIG_SMP
 static void alternatives_smp_lock(const s32 *start, const s32 *end,

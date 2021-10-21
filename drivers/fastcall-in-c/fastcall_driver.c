@@ -10,6 +10,7 @@
 #include <linux/cdev.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <asm/fastcall.h>
 #include "functions.h"
 
@@ -169,9 +170,9 @@ static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
  */
 static int __init fastcall_init(void)
 {
-	int result, page_id;
+	int result, page_alloc, page_copy;
 	size_t count;
-	void *addr;
+	void *addr, *alt_start;
 	static struct file_operations fops = {
 		.owner = THIS_MODULE,
 		.unlocked_ioctl = ioctl,
@@ -190,18 +191,31 @@ static int __init fastcall_init(void)
 	 * Allocate pages for the fastcall functions image
 	 * and copy the contents to there.
 	 */
-	for (page_id = 0; page_id < FUNCTION_PAGES; page_id++) {
-		function_pages[page_id] = alloc_page(GFP_FASTCALL);
-		if (!function_pages[page_id]) {
+	for (page_alloc = 0; page_alloc < FUNCTION_PAGES; page_alloc++) {
+		function_pages[page_alloc] = alloc_page(GFP_FASTCALL);
+		if (!function_pages[page_alloc]) {
 			pr_warn("fcc: can't allocate function page");
 			result = -ENOMEM;
 			goto fail_page_alloc;
 		}
-		addr = kmap(function_pages[page_id]);
-		count = min(fcc_image.size - page_id * PAGE_SIZE, PAGE_SIZE);
-		memcpy(addr, fcc_image.data + page_id * PAGE_SIZE, count);
-		kunmap(function_pages[page_id]);
 	}
+
+	addr = vmap(function_pages, FUNCTION_PAGES, VM_MAP, PAGE_KERNEL);
+	if (!addr) {
+		pr_warn("fcc: can't map function pages");
+		result = -ENOMEM;
+		goto fail_vmap;
+	}
+
+	for (page_copy = 0; page_copy < FUNCTION_PAGES; page_copy++) {
+		size_t offset = page_copy * PAGE_SIZE;
+		count = min(fcc_image.size - offset, PAGE_SIZE);
+		memcpy(addr + offset, fcc_image.data + offset, count);
+	}
+
+	alt_start = addr + fcc_image.alt;
+	apply_alternatives(alt_start, alt_start + fcc_image.alt_len);
+	vunmap(addr);
 
 	// Allocate one character device number with dynamic major number
 	result = alloc_chrdev_region(&dev, 0, 1, DEVICE_NAME);
@@ -254,9 +268,10 @@ fail_cdev_add:
 fail_cdev_alloc:
 	unregister_chrdev_region(dev, 1);
 fail_chrdev:
+fail_vmap:
 fail_page_alloc:
-	for (page_id--; page_id >= 0; page_id--)
-		__free_page(function_pages[page_id]);
+	for (page_alloc--; page_alloc >= 0; page_alloc--)
+		__free_page(function_pages[page_alloc]);
 	kfree(function_pages);
 fail_pages:
 	return result;

@@ -7,11 +7,16 @@
  */
 
 #include <asm/fastcall.h>
+#include <asm/smap.h>
 
 /* wrapped_function - a small fastcall function which accesses a shared page */
 long __attribute__((visibility("hidden")))
 wrapped_function(void *entry[NR_FC_ATTRIBS + 1], long arg1)
 {
 	long *shared = entry[1];
-	return (long)shared + arg1;
+	// Temporarily disable SMAP for accessing the shared user page.
+	stac();
+	long value = *shared;
+	clac();
+	return value + arg1;
 }

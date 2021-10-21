@@ -7,6 +7,8 @@
 extern const struct fcc_image {
 	const void *data;
 	unsigned long size;
+	unsigned long alt;
+	unsigned long alt_len;
 	unsigned long sym_function;
 } fcc_image;
 

@@ -8,12 +8,15 @@ The destination contains the library as a large array and a struct
 describing the library.
 The struct needs to be declared in a header file "<source base name>.h"
 and the instantiation in the destination looks as follows:
-    const struct <destination base name> <destination base name> = {
+
+  const struct <destination base name> <destination base name> = {
     .data = <pointer to the large array>,
     .size = <size of the array>,
+    .alt = <offset of .altinstructions>
+    .alt_len = <length of .altinstructions>
     .sym_<symbol> = <offset of this exported symbol>,
     [...]
-    };
+  };
 
 This script is compatible with Python >= 3.6.15.
 """
@@ -27,7 +30,9 @@ import re
 
 BYTES_PER_LINE = 10
 PAGE_SIZE = 2**12
-NM_REGEX = re.compile("([0-9a-f]{16}) T (.+)")
+ALT_REGEX = re.compile(
+    r"\.altinstructions\s+([0-9A-Fa-f]+)(?:\s+[0-9A-Fa-f]+){2}\s+([0-9A-Fa-f]+)\s+")
+NM_REGEX = re.compile(r"([0-9a-f]{16}) T (.+)")
 
 
 def main():
@@ -47,20 +52,23 @@ def main():
 def write_destination(dst, header, struct, size):
     """Write the C file similar to the vDSO image."""
     dst.write(("/* AUTOMATICALLY GENERATED -- DO NOT EDIT */\n\n"
-               "#include <linux/cache.h>\n"
-               "#include <linux/linkage.h>\n"
-               "#include <asm/page_types.h>\n"
                f'#include "{header}"\n\n'
-               f"static const unsigned char raw_data[{size}] __ro_after_init = {{\n"))
+               f"static const unsigned char raw_data[{size}] = {{\n"))
     src_bytes = read_source()
     for line in src_bytes:
         dst.write("\t")
         dst.write(", ".join(f"0x{byte:02x}" for byte in line))
         dst.write(",\n")
     dst.write("};\n\n")
+
     dst.write(f"const struct {struct} {struct} = {{\n")
     dst.write("\t.data = raw_data,\n")
     dst.write(f"\t.size = {size},\n")
+
+    (alt, alt_len) = alt_sec()
+    dst.write(f"\t.alt = {hex(alt)},\n")
+    dst.write(f"\t.alt_len = {alt_len},\n")
+
     symbols = sorted(source_symbols(), key=lambda s: s[1])
     for (name, address) in symbols:
         address = hex(address)
@@ -78,9 +86,21 @@ def read_source():
             yield src_bytes
 
 
+def alt_sec():
+    """Utilize objdump to get start and length of the .altinstructions section"""
+    process = run(["objdump", "--section-headers", "--", sys.argv[1]],
+                  stdout=PIPE, encoding='ascii')
+    match = ALT_REGEX.search(process.stdout)
+    if not match:
+        print("no .alitinstructions section found", file=stderr)
+        exit(1)
+
+    return int(match.group(2), 16), int(match.group(1), 16)
+
+
 def source_symbols():
     """Utilize nm to find the symbol offsets in the library."""
-    process = run(["nm", "--format=bsd", "--",  sys.argv[1]],
+    process = run(["nm", "--format=bsd", "--", sys.argv[1]],
                   stdout=PIPE, encoding='ascii')
     for line in process.stdout.split("\n"):
         match = NM_REGEX.match(line)

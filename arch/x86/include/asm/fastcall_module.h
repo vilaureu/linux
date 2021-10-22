@@ -49,6 +49,101 @@
 	xchgq %rsp, \reg
 .endm
 
-#endif /* __ASSEMBLER__ */
+#else /* !__ASSEMBLER__ */
 
+#include <asm/fastcall.h>
+#include <linux/slab.h>
+#include <linux/vmalloc.h>
+
+/*
+ * fastcall_image - common data for all fastcall-in-c image structs.
+ */
+struct fastcall_image {
+	// Contents of the shared library (image).
+	const void *data;
+	// Size of the image.
+	unsigned long size;
+	// Location of the .altinstructions section.
+	unsigned long alt;
+	// Length of this section.
+	unsigned long alt_len;
+};
+
+/*
+ * fastcall_prepare_image - return an array containing the prepared image
+ *
+ * This function copys the image data to fresh pages and applies
+ * alternatives on them.
+ *
+ * Free the returned struct with fastcall_free_image on success.
+ * Retruns NULL when not enough memory is available.
+ */
+static inline struct page **
+fastcall_prepare_image(const struct fastcall_image *image)
+{
+	struct page **function_pages;
+	int page_alloc, page_copy;
+	size_t count, nr_pages = (image->size - 1) / PAGE_SIZE + 1;
+	void *addr, *alt_start;
+
+	BUG_ON(image->size == 0);
+
+	// Allocate array for holding the page pointers
+	function_pages =
+		kmalloc_array(nr_pages, sizeof(struct page *), GFP_KERNEL);
+	if (!function_pages)
+		goto fail_pages;
+
+	// Allocate pages for the fastcall functions image.
+	for (page_alloc = 0; page_alloc < nr_pages; page_alloc++) {
+		function_pages[page_alloc] = alloc_page(GFP_FASTCALL);
+		if (!function_pages[page_alloc]) {
+			goto fail_page_alloc;
+		}
+	}
+
+	// Map the pages continuously.
+	addr = vmap(function_pages, nr_pages, VM_MAP, PAGE_KERNEL);
+	if (!addr)
+		goto fail_vmap;
+
+	// Copy the image contents.
+	for (page_copy = 0; page_copy < nr_pages; page_copy++) {
+		size_t offset = page_copy * PAGE_SIZE;
+		count = min(image->size - offset, PAGE_SIZE);
+		memcpy(addr + offset, image->data + offset, count);
+	}
+
+	// Apply alternatives to the copied image.
+	alt_start = addr + image->alt;
+	apply_alternatives(alt_start, alt_start + image->alt_len);
+	vunmap(addr);
+
+	return function_pages;
+
+fail_vmap:
+fail_page_alloc:
+	for (page_alloc--; page_alloc >= 0; page_alloc--)
+		__free_page(function_pages[page_alloc]);
+	kfree(function_pages);
+fail_pages:
+	return NULL;
+}
+
+/*
+ * fastcall_free_image - frees the pages and the array of pages itself
+ */
+static inline void fastcall_free_image(struct page **function_pages,
+				       size_t nr_pages)
+{
+	unsigned page_id;
+	if (!function_pages)
+		return;
+
+	for (page_id = 0; page_id < nr_pages; page_id++)
+		__free_page(function_pages[page_id]);
+	kfree(function_pages);
+}
+
+#endif /* !__ASSEMBLER__ */
 #endif /* _FASTCALL_MODULE_H */

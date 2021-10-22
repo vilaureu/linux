@@ -4,11 +4,16 @@
 #ifndef _FASTCALL_H
 #define _FASTCALL_H
 
+#include <asm/fastcall_module.h>
+
+/* 
+ * fcc_image - declaration for the struct defined in fcc_image.c
+ *
+ * This specifies the properties of the shared library containing the functions
+ * and the exported symbols of this library.
+ */
 extern const struct fcc_image {
-	const void *data;
-	unsigned long size;
-	unsigned long alt;
-	unsigned long alt_len;
+	struct fastcall_image image;
 	unsigned long sym_function;
 } fcc_image;
 

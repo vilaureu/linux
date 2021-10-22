@@ -10,10 +10,12 @@ The struct needs to be declared in a header file "<source base name>.h"
 and the instantiation in the destination looks as follows:
 
   const struct <destination base name> <destination base name> = {
-    .data = <pointer to the large array>,
-    .size = <size of the array>,
-    .alt = <offset of .altinstructions>
-    .alt_len = <length of .altinstructions>
+    .image = {
+        .data = <pointer to the large array>,
+        .size = <size of the array>,
+        .alt = <offset of .altinstructions>
+        .alt_len = <length of .altinstructions>
+    },
     .sym_<symbol> = <offset of this exported symbol>,
     [...]
   };
@@ -62,12 +64,14 @@ def write_destination(dst, header, struct, size):
     dst.write("};\n\n")
 
     dst.write(f"const struct {struct} {struct} = {{\n")
-    dst.write("\t.data = raw_data,\n")
-    dst.write(f"\t.size = {size},\n")
+    dst.write("\t.image = {\n")
+    dst.write("\t\t.data = raw_data,\n")
+    dst.write(f"\t\t.size = {size},\n")
 
     (alt, alt_len) = alt_sec()
-    dst.write(f"\t.alt = {hex(alt)},\n")
-    dst.write(f"\t.alt_len = {alt_len},\n")
+    dst.write(f"\t\t.alt = {hex(alt)},\n")
+    dst.write(f"\t\t.alt_len = {alt_len},\n")
+    dst.write("\t},\n")
 
     symbols = sorted(source_symbols(), key=lambda s: s[1])
     for (name, address) in symbols:

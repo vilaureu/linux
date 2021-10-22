@@ -10,7 +10,6 @@
 #include <linux/cdev.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
-#include <linux/vmalloc.h>
 #include <asm/fastcall.h>
 #include "functions.h"
 
@@ -19,7 +18,7 @@ MODULE_DESCRIPTION("An example for writing fastcall functions in C.");
 #define DEVICE_NAME "fastcall-in-c"
 #define IOCTL_TYPE 0xC1
 #define IOCTL_CMD _IOR(IOCTL_TYPE, 0, struct ioctl_args)
-#define FUNCTION_PAGES ((fcc_image.size - 1) / PAGE_SIZE + 1)
+#define FUNCTION_PAGES ((fcc_image.image.size - 1) / PAGE_SIZE + 1)
 
 /*
  * ioctl_args - information returned from the ioctl handler
@@ -170,52 +169,19 @@ static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
  */
 static int __init fastcall_init(void)
 {
-	int result, page_alloc, page_copy;
-	size_t count;
-	void *addr, *alt_start;
+	int result;
 	static struct file_operations fops = {
 		.owner = THIS_MODULE,
 		.unlocked_ioctl = ioctl,
 	};
 
-	// Allocate array for holding the page pointers
-	function_pages = kmalloc_array(FUNCTION_PAGES, sizeof(struct page *),
-				       GFP_KERNEL);
+	// Copy the image of fastcall functions and apply alternatives
+	function_pages = fastcall_prepare_image(&fcc_image.image);
 	if (!function_pages) {
-		pr_warn("fcc: can't allocate page array");
+		pr_warn("fcc: can't prepare functions image");
 		result = -ENOMEM;
-		goto fail_pages;
+		goto fail_image;
 	}
-
-	/*
-	 * Allocate pages for the fastcall functions image
-	 * and copy the contents to there.
-	 */
-	for (page_alloc = 0; page_alloc < FUNCTION_PAGES; page_alloc++) {
-		function_pages[page_alloc] = alloc_page(GFP_FASTCALL);
-		if (!function_pages[page_alloc]) {
-			pr_warn("fcc: can't allocate function page");
-			result = -ENOMEM;
-			goto fail_page_alloc;
-		}
-	}
-
-	addr = vmap(function_pages, FUNCTION_PAGES, VM_MAP, PAGE_KERNEL);
-	if (!addr) {
-		pr_warn("fcc: can't map function pages");
-		result = -ENOMEM;
-		goto fail_vmap;
-	}
-
-	for (page_copy = 0; page_copy < FUNCTION_PAGES; page_copy++) {
-		size_t offset = page_copy * PAGE_SIZE;
-		count = min(fcc_image.size - offset, PAGE_SIZE);
-		memcpy(addr + offset, fcc_image.data + offset, count);
-	}
-
-	alt_start = addr + fcc_image.alt;
-	apply_alternatives(alt_start, alt_start + fcc_image.alt_len);
-	vunmap(addr);
 
 	// Allocate one character device number with dynamic major number
 	result = alloc_chrdev_region(&dev, 0, 1, DEVICE_NAME);
@@ -268,27 +234,18 @@ fail_cdev_add:
 fail_cdev_alloc:
 	unregister_chrdev_region(dev, 1);
 fail_chrdev:
-fail_vmap:
-fail_page_alloc:
-	for (page_alloc--; page_alloc >= 0; page_alloc--)
-		__free_page(function_pages[page_alloc]);
-	kfree(function_pages);
-fail_pages:
+	fastcall_free_image(function_pages, FUNCTION_PAGES);
+fail_image:
 	return result;
 }
 
 static void __exit fastcall_exit(void)
 {
-	unsigned page_id;
-
 	device_destroy(class, dev);
 	class_destroy(class);
 	cdev_del(cdev);
 	unregister_chrdev_region(dev, 1);
-
-	for (page_id = 0; page_id < FUNCTION_PAGES; page_id++)
-		__free_page(function_pages[page_id]);
-	kfree(function_pages);
+	fastcall_free_image(function_pages, FUNCTION_PAGES);
 }
 
 module_init(fastcall_init);

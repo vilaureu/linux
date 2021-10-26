@@ -19,28 +19,4 @@
  * Unfortunately, this function needs an additional register.
  * Hence, arg5 (%r9) is not usable as an argument.
  */
-SYM_CODE_START(function)
-	UNWIND_HINT_EMPTY
-  
-  // This clobbers r9 (arg5)
-  SETUP_STACK reg=%rdx scratch_reg=%r9
-
-  // Save the stack pointer, flags register and return address
-  pushq %rdx
-  pushq %r11
-  pushq %rcx
-
-  // Move the function arguments into the right position
-  movq %rax, %rdi
-  movq %r10, %rcx
-
-  // Call the actual fastcall function
-  call wrapped_function
-
-  // Restore saved registers
-  popq %rcx
-  popq %r11
-  movq (%rsp), %rsp
-
-  sysretq
-SYM_CODE_END(function)
+FASTCALL_ASM_WRAPPER name=function

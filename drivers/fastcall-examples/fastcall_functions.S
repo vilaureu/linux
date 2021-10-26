@@ -48,7 +48,7 @@ SYM_CODE_END(fce_noop)
  */
 SYM_CODE_START(fce_stack)
 	UNWIND_HINT_EMPTY
-	SETUP_STACK
+	FASTCALL_SETUP_STACK
 
 	pushq ARG1
 	popq %rax

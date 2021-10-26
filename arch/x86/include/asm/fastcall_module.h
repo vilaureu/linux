@@ -18,7 +18,7 @@
  *
  * The user stack pointer is saved to reg. scratch_reg is clobbered.
  */
-.macro SETUP_STACK reg=%rdi, scratch_reg=%rax
+.macro FASTCALL_SETUP_STACK reg=%rdi, scratch_reg=%rax
 	/*
 	 * This is save because the user can neither change MSR_TSC_AUX nor the segment limit.
 	 *
@@ -49,11 +49,60 @@
 	xchgq %rsp, \reg
 .endm
 
+/*
+ * Create a wrapper for fastcall functions in C in ASM.
+ *
+ * This is the function to which the fastcall entry will jump to.
+ * It sets up the stack, saves important registers and then
+ * calls the wrapped function of the name wrapped_<name>.
+ * This clobbers %r9 (system call argument five).
+ */
+.macro FASTCALL_ASM_WRAPPER name
+	SYM_CODE_START(\name)
+		UNWIND_HINT_EMPTY
+
+		// This clobbers %r9 (arg5)
+		FASTCALL_SETUP_STACK reg=%rdx scratch_reg=%r9
+
+		// Save the stack pointer, flags register and return address
+		pushq %rdx
+		pushq %r11
+		pushq %rcx
+
+		// Move the function arguments into the right position
+		movq %rax, %rdi
+		movq %r10, %rcx
+
+		// Call the actual fastcall function
+		call wrapped_\name
+
+		// Restore saved registers
+		popq %rcx
+		popq %r11
+		movq (%rsp), %rsp
+
+		sysretq
+	SYM_CODE_END(\name)
+.endm
+
 #else /* !__ASSEMBLER__ */
 
 #include <asm/fastcall.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+
+/*
+ * Macro for the head of wrapped fastcall functions in C.
+ *
+ * The first parameter is an array of pointers "entry"
+ * which corresponds to the fastcall table entry.
+ * The other parameters are the system call arguments one
+ * through four.
+ */
+#define FASTCALL_WRAPPED_FN(name)                                              \
+	long __attribute__((visibility("hidden")))                             \
+	wrapped_##name(void *entry[NR_FC_ATTRIBS + 1], long arg1, long arg2,   \
+		       long arg3, long arg4)
 
 /*
  * fastcall_image - common data for all fastcall-in-c image structs.

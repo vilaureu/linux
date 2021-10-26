@@ -42,7 +42,7 @@ SYM_CODE_START(fct_template)
 	UNWIND_HINT_EMPTY
 
   // Setup a per-CPU stack and store old %rsp to %rdx.
-  SETUP_STACK reg=%rdx scratch_reg=%rdi
+  FASTCALL_SETUP_STACK reg=%rdx scratch_reg=%rdi
   // Push the old stack pointer to the new stack.
   pushq %rdx
 

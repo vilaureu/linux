@@ -34,7 +34,8 @@ BYTES_PER_LINE = 10
 PAGE_SIZE = 2**12
 ALT_REGEX = re.compile(
     r"\.altinstructions\s+([0-9A-Fa-f]+)(?:\s+[0-9A-Fa-f]+){2}\s+([0-9A-Fa-f]+)\s+")
-NM_REGEX = re.compile(r"([0-9a-f]{16}) T (.+)")
+EXPORTED_FN_REGEX = re.compile(r"([0-9A-Fa-f]{16}) T (.+)")
+UNDEF_SYM_REGEX = re.compile(r"U (.+)")
 
 
 def main():
@@ -91,9 +92,17 @@ def read_source():
 
 
 def alt_sec():
-    """Utilize objdump to get start and length of the .altinstructions section"""
+    """Utilize objdump to get start and length of the .altinstructions section.
+
+    This also checks that the library does not contain .data or .bss sections.
+    """
     process = run(["objdump", "--section-headers", "--", sys.argv[1]],
                   stdout=PIPE, encoding='ascii')
+
+    if ".data" in process.stdout or ".bss" in process.stdout:
+        print("the library must not contain a .bss or .data section", file=stderr)
+        exit(1)
+
     match = ALT_REGEX.search(process.stdout)
     if not match:
         print("no .alitinstructions section found", file=stderr)
@@ -103,16 +112,24 @@ def alt_sec():
 
 
 def source_symbols():
-    """Utilize nm to find the symbol offsets in the library."""
+    """Utilize nm to find the symbol offsets in the library.
+
+    This also checks that the library does not use any undefined symbols which
+    a dynamic loader should resolve.
+    """
     process = run(["nm", "--format=bsd", "--", sys.argv[1]],
                   stdout=PIPE, encoding='ascii')
     for line in process.stdout.split("\n"):
-        match = NM_REGEX.match(line)
-        if not match:
-            continue
+        line = line.strip()
+        match = EXPORTED_FN_REGEX.match(line)
+        if match:
+            address = match.group(1)
+            yield match.group(2), int(address, 16)
 
-        address = match.group(1)
-        yield match.group(2), int(address, 16)
+        match = UNDEF_SYM_REGEX.match(line)
+        if match:
+            print(f"undefined symbol '{match.group(1)}' found", file=stderr)
+            exit(1)
 
 
 def basename_root(path):

@@ -9,6 +9,11 @@
 #include <asm/fastcall_module.h>
 #include <asm/smap.h>
 
+// Constant global variable with value zero.
+static const long static_increment = 0;
+// Constant global variable with a non-zero value.
+static const long static_decrement = 5;
+
 /* wrapped_function - a small fastcall function which accesses a shared page */
 FASTCALL_WRAPPED_FN(function)
 {
@@ -17,5 +22,8 @@ FASTCALL_WRAPPED_FN(function)
 	stac();
 	long value = *shared;
 	clac();
+	// Test the access to constant variables (in the .rodata section).
+	value += *(volatile const long *)&static_increment;
+	value -= *(volatile const long *)&static_decrement;
 	return value + arg1;
 }

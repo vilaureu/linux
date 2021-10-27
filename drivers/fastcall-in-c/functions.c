@@ -14,6 +14,15 @@ static const long static_increment = 0;
 // Constant global variable with a non-zero value.
 static const long static_decrement = 5;
 
+/* apply_offsets - test function calls in fastcall images */
+noinline static long apply_offsets(long value)
+{
+	// Test the access to constant variables (in the .rodata section).
+	value += *(volatile const long *)&static_increment;
+	value -= *(volatile const long *)&static_decrement;
+	return value;
+}
+
 /* wrapped_function - a small fastcall function which accesses a shared page */
 FASTCALL_WRAPPED_FN(function)
 {
@@ -22,8 +31,6 @@ FASTCALL_WRAPPED_FN(function)
 	stac();
 	long value = *shared;
 	clac();
-	// Test the access to constant variables (in the .rodata section).
-	value += *(volatile const long *)&static_increment;
-	value -= *(volatile const long *)&static_decrement;
+	value = apply_offsets(value);
 	return value + arg1;
 }

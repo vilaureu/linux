@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0
 
 # Compile and linkage flags for fastcall functions written in C
-FASTCALL_CFLAGS := -fPIC -O2 $(filter -g%,$(KBUILD_CFLAGS))
-FASTCALL_LDFLAGS := -nostdlib -shared -fPIC -Bsymbolic -fno-stack-protector
+FASTCALL_CFLAGS := -fPIC -O2 -fno-stack-protector $(filter -W%,$(KBUILD_CFLAGS))
+FASTCALL_LDFLAGS := -nostdlib -shared -fPIC -Bsymbolic
 
 FATSCALL2C_SCRIPT := $(srctree)/scripts/fastcall2c.py
 

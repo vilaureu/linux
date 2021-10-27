@@ -26,10 +26,10 @@ noinline static long apply_offsets(long value)
 /* wrapped_function - a small fastcall function which accesses a shared page */
 FASTCALL_WRAPPED_FN(function)
 {
-	long *shared = entry[1];
+	long value, *shared = entry[1];
 	// Temporarily disable SMAP for accessing the shared user page.
 	stac();
-	long value = *shared;
+	value = *shared;
 	clac();
 	value = apply_offsets(value);
 	return value + arg1;

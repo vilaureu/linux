@@ -285,7 +285,7 @@ static long mwait_example(unsigned long args)
 		goto fail_shared_alloc;
 
 	shared_addr = create_additional_mapping(&shared_page, 1, FASTCALL_VM_RW,
-						true);
+						false);
 	ret = (long)shared_addr;
 	if (IS_ERR_VALUE(shared_addr))
 		goto fail_shared_create;

@@ -10,6 +10,7 @@ obj-y				+= irqchip/
 obj-y				+= bus/
 
 obj-$(CONFIG_GENERIC_PHY)	+= phy/
+obj-y				+= fastcall-event/
 obj-y				+= fastcall-examples/
 obj-y				+= fastcall-in-c/
 obj-y				+= fastcall-template/

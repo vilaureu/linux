@@ -236,6 +236,8 @@ source "drivers/counter/Kconfig"
 
 source "drivers/most/Kconfig"
 
+source "drivers/fastcall-event/Kconfig"
+
 source "drivers/fastcall-examples/Kconfig"
 
 source "drivers/fastcall-in-c/Kconfig"

@@ -88,11 +88,10 @@ static long ioctl_handler(unsigned long args, struct page *counter_page,
 	};
 
 	/*
-   * This maps the page into the address space.
-   * The last parameter makes the mapping accessable from user mode.
+   * This maps the counter page into the address space.
    */
 	counter_addr = create_additional_mapping(&counter_page, 1,
-						 FASTCALL_VM_RW, true);
+						 FASTCALL_VM_RW, false);
 	ret = (long)counter_addr;
 	if (IS_ERR_VALUE(counter_addr))
 		goto fail_shared_create;

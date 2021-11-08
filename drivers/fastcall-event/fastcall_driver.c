@@ -7,12 +7,14 @@
  * They can be used to create an interface similar to eventfd.
  */
 
-#include "asm-generic/fcntl.h"
+#include <asm-generic/fcntl.h>
+#include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/cdev.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
 #include <asm/fastcall.h>
+
 #include "functions.h"
 
 MODULE_DESCRIPTION("Fastcalls for an event wait mechanism similar to eventfd.");
@@ -149,6 +151,19 @@ static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
 	long ret = -ENOIOCTLCMD;
 	struct page *counter_page = file->private_data;
 	bool block = file->f_flags ^ O_NONBLOCK;
+
+	/*
+	 * Check for MONITOR/MWAIT in the same way as kvm_can_mwait_in_guest().
+	 * For simplicity, we do not enable eventfd for CPUs with only the MSBDS bug.
+	 * Hence, we do not have to mitigate MDS when going idle.
+	 * Mitigating MDS when going idle does not make sense for CPUs with more MDS
+	 * bugs, see update_mds_branch_idle().
+	 */
+	if (!boot_cpu_has(X86_FEATURE_MWAIT) ||
+	    boot_cpu_has_bug(X86_BUG_MONITOR) ||
+	    !boot_cpu_has(X86_FEATURE_ARAT) ||
+	    boot_cpu_has_bug(X86_BUG_MSBDS_ONLY))
+		return -ENOIOCTLCMD;
 
 	if (cmd == IOCTL_ZERO) {
 		ret = ioctl_handler(args, counter_page, block, false);

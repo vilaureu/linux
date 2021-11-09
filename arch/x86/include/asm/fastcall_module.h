@@ -62,10 +62,10 @@
 		UNWIND_HINT_EMPTY
 
 		// This clobbers %r9 (arg5)
-		FASTCALL_SETUP_STACK reg=%rdx scratch_reg=%r9
+		FASTCALL_SETUP_STACK reg=%rdi scratch_reg=%r9
 
 		// Save the stack pointer, flags register and return address
-		pushq %rdx
+		pushq %rdi
 		pushq %r11
 		pushq %rcx
 

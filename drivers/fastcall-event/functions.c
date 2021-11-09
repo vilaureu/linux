@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
-/* functions.c - contains the actual fastcall function contents
+/*
+ * functions.c - contains the actual fastcall function contents
  *
  * These functions implement the behavior of fastcall-event.
  */
@@ -15,18 +16,28 @@
  */
 #define COUNTER_MAX ((unsigned long)LONG_MAX)
 
+/*
+ * mwait - wait until monitored address receives a store or interrupt
+ */
 static __always_inline void mwait(void)
 {
 	/*
-		 * __mwait() does invoke mds_idle_clear_cpu_buffers(), which
-		 * does not work here. However, we know that we do not have
-		 * to mitigate MDS as checked by the ioctl handler.
-		 *
-		 * "mwait %eax, %ecx;"
-		 */
+	 * __mwait() does invoke mds_idle_clear_cpu_buffers(), which
+	 * does not work here. However, we know that we do not have
+	 * to mitigate MDS as checked by the ioctl handler.
+	 *
+	 * "mwait %eax, %ecx;"
+	 */
 	asm volatile(".byte 0x0f, 0x01, 0xc9;" ::"a"(0), "c"(1));
 }
 
+/*
+ * try_read - read the counter without underflow
+ *
+ * @value - previously read value
+ *
+ * Returns 0 if the read failed because the counter had become 0.
+ */
 static unsigned long try_read(unsigned long *counter, unsigned long value,
 			      bool semaphore)
 {
@@ -42,11 +53,15 @@ static unsigned long try_read(unsigned long *counter, unsigned long value,
 			value = arch_cmpxchg(counter, value, value - 1);
 		} while (value && value != prev_value);
 	} else
+		// No worries about underflows here.
 		value = arch_xchg(counter, 0);
 
 	return value;
 }
 
+/*
+ * try_read_checked - read the counter and then invoke try_read()
+ */
 static unsigned long try_read_checked(unsigned long *counter, bool semaphore)
 {
 	/*
@@ -60,6 +75,9 @@ static unsigned long try_read_checked(unsigned long *counter, bool semaphore)
 	return try_read(counter, value, semaphore);
 }
 
+/*
+ * read - "read" the counter with the same semantics as in eventfd
+ */
 static unsigned long read(unsigned long *counter, bool block, bool semaphore)
 {
 	unsigned long value;
@@ -97,6 +115,13 @@ static unsigned long read(unsigned long *counter, bool block, bool semaphore)
 	return -EAGAIN;
 }
 
+/*
+ * try_write - write the counter without exceeding COUNTER_MAX
+ *
+ * @value - previously read value
+ *
+ * Returns false if the counter became to large to store the increment.
+ */
 static bool try_write(unsigned long *counter, unsigned long increment,
 		      unsigned long value)
 {
@@ -117,6 +142,9 @@ static bool try_write(unsigned long *counter, unsigned long increment,
 	return false;
 }
 
+/*
+ * try_write_checked - read the counter and then invoke try_write()
+ */
 static bool try_write_checked(unsigned long *counter, unsigned long increment)
 {
 	unsigned long value = READ_ONCE(*counter);
@@ -126,6 +154,9 @@ static bool try_write_checked(unsigned long *counter, unsigned long increment)
 	return try_write(counter, increment, value);
 }
 
+/*
+ * write - "write" the counter with the same semantics as in eventfd
+ */
 static int write(unsigned long *counter, bool block, unsigned long increment)
 {
 	if (increment == 0)
@@ -164,9 +195,10 @@ static int write(unsigned long *counter, bool block, unsigned long increment)
 	return -EAGAIN;
 }
 
-/* wrapped_eventc - implementation of the eventfc like fastcalls
+/*
+ * wrapped_eventc - implementation of the eventfc like fastcalls
  *
- * This fastcall function multiplexes the read and write operations 
+ * This fastcall function multiplexes the read and write operations.
  */
 FASTCALL_WRAPPED_FN(eventfc)
 {

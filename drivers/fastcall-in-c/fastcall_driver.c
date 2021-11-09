@@ -84,9 +84,9 @@ static long ioctl_handler(struct fastcall_reg_args reg_args, unsigned long args)
 		goto fail_shared_alloc;
 
 	/*
-   * This maps the page into the address space.
-   * The last parameter makes the mapping accessable from user mode.
-   */
+   	 * This maps the page into the address space.
+   	 * The last parameter makes the mapping accessable from user mode.
+   	 */
 	shared_addr = create_additional_mapping(&shared_page, 1, FASTCALL_VM_RW,
 						true);
 	ret = (long)shared_addr;
@@ -98,18 +98,18 @@ static long ioctl_handler(struct fastcall_reg_args reg_args, unsigned long args)
 	reg_args.attribs[0] = shared_addr;
 
 	/*
-   * Allocate zeroed memory area for the return structure,
-   * which is copied to user space.
-   */
+   	 * Allocate zeroed memory area for the return structure,
+   	 * which is copied to user space.
+   	 */
 	ioctl_args = kzalloc(sizeof(struct ioctl_args), GFP_KERNEL);
 	ret = -ENOMEM;
 	if (!ioctl_args)
 		goto fail_args_alloc;
 
 	/*
-   * Register the fastcall function. This makes the function live immediately.
-   * Therefore, this function can not really fail afterwards.
-   */
+   	 * Register the fastcall function. This makes the function live immediately.
+   	 * Therefore, this function can not really fail afterwards.
+   	 */
 	ret = register_fastcall(&reg_args);
 	if (ret < 0)
 		goto fail_register;
@@ -120,9 +120,9 @@ static long ioctl_handler(struct fastcall_reg_args reg_args, unsigned long args)
 	ioctl_args->index = reg_args.index;
 
 	/*
-   * At this point we have no possibility to easily, safely revert our steps.
-   * Hence, we return with the alternative "success" value of 1.
-   */
+   	 * At this point we have no possibility to easily, safely revert our steps.
+   	 * Hence, we return with the alternative "success" value of 1.
+   	 */
 	ret = 1;
 	if (copy_to_user((void *)args, ioctl_args, sizeof(struct ioctl_args)))
 		goto fail_copy;

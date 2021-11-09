@@ -22,16 +22,22 @@ MODULE_DESCRIPTION("Fastcalls for an event wait mechanism similar to eventfd.");
 #define DEVICE_NAME "fastcall-event"
 #define IOCTL_TYPE 0xC2
 #define IOCTL_CMD(nr) _IOR(IOCTL_TYPE, nr, struct ioctl_args)
+/*
+ * IOCTL_ZERO - eventfc behaves like eventfd without EFD_SEMAPHORE
+ */
 #define IOCTL_ZERO IOCTL_CMD(0)
+/*
+ * IOCTL_SEM  - eventfc behaves like eventfd with EFD_SEMAPHORE
+ */
 #define IOCTL_SEM IOCTL_CMD(1)
 #define FUNCTION_PAGES ((eventfc_image.image.size - 1) / PAGE_SIZE + 1)
 
 /*
  * ioctl_args - information returned from the ioctl handler
  *
- * @fn_addr     - start of the function mapping
- * @fn_len      - length of the function mapping
- * @index       - index of the function in the fastcall table
+ * @fn_addr   - start of the function mapping
+ * @fn_len    - length of the function mapping
+ * @index     - index of the function in the fastcall table
  */
 struct ioctl_args {
 	unsigned long fn_addr;
@@ -45,6 +51,9 @@ static struct cdev *cdev;
 static struct class *class;
 static struct device *device;
 
+/*
+ * additional_unmap - remove counter page from AS
+ */
 static void additional_unmap(void *priv)
 {
 	fastcall_remove_mapping((unsigned long)priv);
@@ -88,8 +97,8 @@ static long ioctl_handler(unsigned long args, struct page *counter_page,
 	};
 
 	/*
-   * This maps the counter page into the address space.
-   */
+	 * This maps the counter page into the address space.
+	 */
 	counter_addr = create_additional_mapping(&counter_page, 1,
 						 FASTCALL_VM_RW, false);
 	ret = (long)counter_addr;
@@ -102,18 +111,18 @@ static long ioctl_handler(unsigned long args, struct page *counter_page,
 	reg_args.attribs[2] = semaphore;
 
 	/*
-   * Allocate zeroed memory area for the return structure,
-   * which is copied to user space.
-   */
+	 * Allocate zeroed memory area for the return structure,
+	 * which is copied to user space.
+	 */
 	ioctl_args = kzalloc(sizeof(struct ioctl_args), GFP_KERNEL);
 	ret = -ENOMEM;
 	if (!ioctl_args)
 		goto fail_args_alloc;
 
 	/*
-   * Register the fastcall function. This makes the function live immediately.
-   * Therefore, this function can not really fail afterwards.
-   */
+	 * Register the fastcall function. This makes the function live immediately.
+	 * Therefore, this function can not really fail afterwards.
+	 */
 	ret = register_fastcall(&reg_args);
 	if (ret < 0)
 		goto fail_register;
@@ -123,9 +132,9 @@ static long ioctl_handler(unsigned long args, struct page *counter_page,
 	ioctl_args->index = reg_args.index;
 
 	/*
-   * At this point we have no possibility to easily, safely revert our steps.
-   * Hence, we return with the alternative "success" value of 1.
-   */
+	 * At this point we have no possibility to easily, safely revert our steps.
+	 * Hence, we return with the alternative "success" value of 1.
+	 */
 	ret = 1;
 	if (copy_to_user((void *)args, ioctl_args, sizeof(struct ioctl_args)))
 		goto fail_copy;
@@ -143,7 +152,9 @@ fail_shared_create:
 }
 
 /*
- * ioctl() - register the fastcall functions as specified by cmd and args
+ * ioctl() - register the eventfc fastcall function
+ *
+ * The cmd can be IOCTL_ZERO or IOCTL_SEM.
  */
 static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
@@ -173,6 +184,9 @@ static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
 	return ret == 1 ? -EFAULT : ret;
 }
 
+/*
+ * open - allocate a counter page for every file descriptor
+ */
 static int open(struct inode *i, struct file *file)
 {
 	struct page *counter_page = alloc_page(GFP_FASTCALL);
@@ -183,6 +197,9 @@ static int open(struct inode *i, struct file *file)
 	return 0;
 }
 
+/*
+ * release - free the counter page
+ */
 static int release(struct inode *i, struct file *file)
 {
 	__free_page(file->private_data);
@@ -192,9 +209,8 @@ static int release(struct inode *i, struct file *file)
 /*
  * fastcall_init() - initialize this module
  *
- * This function prepares the pages with the fastcall functions
- * and registers a new device for interacting with the
- * applications.
+ * This function prepares the pages with the fastcall functions and registers a
+ * new device for interacting with the applications.
  */
 static int __init fastcall_init(void)
 {

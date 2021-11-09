@@ -12,6 +12,7 @@
 #include <asm/cpufeatures.h>
 #include <asm/fastcall.h>
 #include <asm/segment.h>
+#include <asm/unwind_hints.h>
 
 /*
  * Set the stack pointer to the per-CPU stack.

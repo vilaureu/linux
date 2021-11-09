@@ -2,8 +2,8 @@
 
 include $(srctree)/lib/fastcall/Makefile
 
-# The fastcall functions written in C are put in a separately compiled
-# shared library.
+# The fastcall functions written in C are put in a separately compiled shared
+# library.
 image_objs := functions.o functions_wrapper.o
 image_lib := functions.so
 image_as_c := eventfc_image.c

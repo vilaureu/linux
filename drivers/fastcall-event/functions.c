@@ -7,6 +7,26 @@
 #include <asm/fastcall_module.h>
 #include <asm/mwait.h>
 
+/* 
+ * COUNTER_MAX - maximum value of the counter
+ *
+ * Because system calls use negative return values to indicate errors and
+ * read() might return the counter, it cannot be negative.
+ */
+#define COUNTER_MAX ((unsigned long)LONG_MAX)
+
+static __always_inline void mwait(void)
+{
+	/*
+		 * __mwait() does invoke mds_idle_clear_cpu_buffers(), which
+		 * does not work here. However, we know that we do not have
+		 * to mitigate MDS as checked by the ioctl handler.
+		 *
+		 * "mwait %eax, %ecx;"
+		 */
+	asm volatile(".byte 0x0f, 0x01, 0xc9;" ::"a"(0), "c"(1));
+}
+
 static unsigned long try_read(unsigned long *counter, unsigned long value,
 			      bool semaphore)
 {
@@ -27,8 +47,7 @@ static unsigned long try_read(unsigned long *counter, unsigned long value,
 	return value;
 }
 
-noinline static unsigned long try_read_checked(unsigned long *counter,
-					       bool semaphore)
+static unsigned long try_read_checked(unsigned long *counter, bool semaphore)
 {
 	/*
 	 * Allways read the counter to not signal stores with failing XCHGs.
@@ -41,8 +60,7 @@ noinline static unsigned long try_read_checked(unsigned long *counter,
 	return try_read(counter, value, semaphore);
 }
 
-noinline static unsigned long read(unsigned long *counter, bool block,
-				   bool semaphore)
+static unsigned long read(unsigned long *counter, bool block, bool semaphore)
 {
 	unsigned long value;
 
@@ -50,43 +68,99 @@ noinline static unsigned long read(unsigned long *counter, bool block,
 	if (value)
 		return value;
 
-	if (block) {
-		/*
-		 * Arm the monitor hardware. Loop until we know that we did not
-		 * miss a wakeup.
-		 */
-		for (;;) {
-			__monitor(counter, 0, 0);
+	if (!block)
+		return -EAGAIN;
 
-			value = READ_ONCE(*counter);
-			if (!value)
-				break;
+	/*
+	 * Arm the monitor hardware. Loop until we know that we did not miss a
+	 * wakeup.
+	 */
+	for (;;) {
+		__monitor(counter, 0, 0);
 
-			value = try_read(counter, value, semaphore);
-			if (value)
-				return value;
-		}
+		value = READ_ONCE(*counter);
+		if (!value)
+			break;
 
-		/*
-		 * __mwait() does invoke mds_idle_clear_cpu_buffers(), which
-		 * does not work here. However, we know that we do not have
-		 * to mitigate MDS as checked by the ioctl handler.
-		 *
-		 * "mwait %eax, %ecx;"
-		 */
-		asm volatile(".byte 0x0f, 0x01, 0xc9;" ::"a"(0), "c"(1));
-
-		// Counter changed from 0 to something; try to read it now.
-		value = try_read_checked(counter, semaphore);
+		value = try_read(counter, value, semaphore);
 		if (value)
 			return value;
 	}
 
+	mwait();
+
+	// Counter changed from 0 to something; try to read it now.
+	value = try_read_checked(counter, semaphore);
+	if (value)
+		return value;
+
 	return -EAGAIN;
 }
 
-static unsigned long write(unsigned long *counter, bool block)
+static bool try_write(unsigned long *counter, unsigned long increment,
+		      unsigned long value)
 {
+	unsigned long prev_value;
+
+	/*
+	 * Use CMPXCHG instead of atomic decrement to prevent exceeding
+	 * COUNTER_MAX. Loop until CMPXCHG succeeds or the counter would
+	 * exceed the maximum.
+	 */
+	do {
+		prev_value = value;
+		value = arch_cmpxchg(counter, value, value + increment);
+		if (value == prev_value)
+			return true;
+	} while (value <= COUNTER_MAX - increment);
+
+	return false;
+}
+
+static bool try_write_checked(unsigned long *counter, unsigned long increment)
+{
+	unsigned long value = READ_ONCE(*counter);
+	if (value > COUNTER_MAX - increment)
+		return false;
+
+	return try_write(counter, increment, value);
+}
+
+static int write(unsigned long *counter, bool block, unsigned long increment)
+{
+	if (increment == 0)
+		return 0;
+	else if (increment > COUNTER_MAX)
+		return -EINVAL;
+
+	if (try_write_checked(counter, increment))
+		return 0;
+
+	if (!block)
+		return -EAGAIN;
+
+	/*
+	 * Arm the monitor hardware. Loop until we know that we did not miss a
+	 * wakeup.
+	 */
+	for (;;) {
+		unsigned long value;
+		__monitor(counter, 0, 0);
+
+		value = READ_ONCE(*counter);
+		if (value > COUNTER_MAX - increment)
+			break;
+
+		if (try_write(counter, increment, value))
+			return 0;
+	}
+
+	mwait();
+
+	// Counter changed; try to write it now.
+	if (try_write_checked(counter, increment))
+		return 0;
+
 	return -EAGAIN;
 }
 
@@ -102,7 +176,7 @@ FASTCALL_WRAPPED_FN(eventfc)
 	if (arg1 == 0) {
 		return read(counter, block, semaphore);
 	} else if (arg1 == 1) {
-		return write(counter, block);
+		return write(counter, block, arg2);
 	} else {
 		return -ENOSYS;
 	}

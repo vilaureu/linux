@@ -68,7 +68,7 @@ static unsigned long try_read_checked(unsigned long *counter, bool semaphore)
 	 * Allways read the counter to not signal stores with failing XCHGs.
 	 * This would wake up other waiting threads.
 	 */
-	unsigned long value = *counter; //READ_ONCE(*counter);
+	unsigned long value = READ_ONCE(*counter);
 	if (!value)
 		return value;
 
@@ -84,7 +84,7 @@ static unsigned long read(unsigned long *counter, bool block, bool semaphore)
 
 	value = try_read_checked(counter, semaphore);
 	if (value)
-		return value;
+		return semaphore ? 1 : value;
 
 	if (!block)
 		return -EAGAIN;
@@ -102,7 +102,7 @@ static unsigned long read(unsigned long *counter, bool block, bool semaphore)
 
 		value = try_read(counter, value, semaphore);
 		if (value)
-			return value;
+			return semaphore ? 1 : value;
 	}
 
 	mwait();
@@ -110,7 +110,7 @@ static unsigned long read(unsigned long *counter, bool block, bool semaphore)
 	// Counter changed from 0 to something; try to read it now.
 	value = try_read_checked(counter, semaphore);
 	if (value)
-		return value;
+		return semaphore ? 1 : value;
 
 	return -EAGAIN;
 }

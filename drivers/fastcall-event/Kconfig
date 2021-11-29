@@ -8,3 +8,7 @@ config FASTCALL_EVENT
 	  This driver provides fastcalls which allow applications to wait for
 	  events triggered by other applications using the MWAIT instruction.
 	  They can be used to create an interface similar to eventfd.
+
+	  The command-line arguments "-overcommit cpu-pm=on" need to be added
+	  to QEMU when using this module as it requires MWAIT support. However,
+	  this will prevent KVM from detecting when the guest kernel idles.

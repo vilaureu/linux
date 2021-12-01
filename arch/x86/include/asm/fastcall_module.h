@@ -6,6 +6,8 @@
 #ifndef _FASTCALL_MODULE_H
 #define _FASTCALL_MODULE_H
 
+#define SYSCALL_PARAMS_SIZE (7 * 8)
+
 #ifdef __ASSEMBLER__
 
 #include <asm/alternative-asm.h>
@@ -13,6 +15,8 @@
 #include <asm/fastcall.h>
 #include <asm/segment.h>
 #include <asm/unwind_hints.h>
+#include <linux/errno.h>
+#include <asm/nospec-branch.h>
 
 /*
  * Set the stack pointer to the per-CPU stack.
@@ -51,6 +55,26 @@
 .endm
 
 /*
+ * Define syscall_entry symbol where the address of the system call entry
+ * will be stored.
+ */
+.macro FASTCALL_DEFINE_SYS_ENTRY
+	.section .rodata
+	.global syscall_entry
+	syscall_entry:
+	.quad 0
+.endm
+
+/*
+ * Restore saved registers in FASTCALL_ASM_WRAPPER
+ */
+.macro RESTORE_REGISTERS
+	popq %rcx
+	popq %r11
+	movq (%rsp), %rsp
+.endm
+
+/*
  * Create a wrapper for fastcall functions in C in ASM.
  *
  * This is the function to which the fastcall entry will jump to.
@@ -58,42 +82,66 @@
  * calls the wrapped function of the name wrapped_<name>.
  * This clobbers %r9 (system call argument five).
  */
-.macro FASTCALL_ASM_WRAPPER name
+.macro FASTCALL_ASM_WRAPPER name syscall_fallback
 	SYM_CODE_START(\name)
-		UNWIND_HINT_EMPTY
+	UNWIND_HINT_EMPTY
 
-		// This clobbers %r9 (arg5)
-		FASTCALL_SETUP_STACK reg=%rdi scratch_reg=%r9
+	// This clobbers %r9 (arg5)
+	FASTCALL_SETUP_STACK reg=%rdi scratch_reg=%r9
 
-		// Save the stack pointer, flags register and return address
-		pushq %rdi
-		pushq %r11
-		pushq %rcx
+	// Save the stack pointer, flags register and return address
+	pushq %rdi
+	pushq %r11
+	pushq %rcx
 
-		// Move the function arguments into the right position
-		movq %rax, %rdi
-		movq %r10, %rcx
+	.if (\syscall_fallback - 0)
+		subq $SYSCALL_PARAMS_SIZE, %rsp
+		movq %rsp, %r9
+	.endif
 
-		// Call the actual fastcall function
-		call wrapped_\name
+	// Move the function arguments into the right position
+	movq %rax, %rdi
+	movq %r10, %rcx
 
-		// Restore saved registers
-		popq %rcx
-		popq %r11
-		movq (%rsp), %rsp
+	// Call the actual fastcall function
+	call wrapped_\name
 
-		sysretq
+	.if (\syscall_fallback - 0)
+		cmpw $-ERESTARTSYS, %ax
+		jne 0f
+
+		popq %rax
+		popq %rdi
+		popq %rsi
+		popq %rdx
+		popq %r10
+		popq %r8
+		popq %r9
+
+		RESTORE_REGISTERS
+
+		ANNOTATE_RETPOLINE_SAFE
+		jmpq *syscall_entry(%rip)
+
+		0:
+		addq $SYSCALL_PARAMS_SIZE, %rsp
+	.endif
+
+	RESTORE_REGISTERS
+
+	sysretq
 	SYM_CODE_END(\name)
 .endm
 
 #else /* !__ASSEMBLER__ */
 
 #include <asm/fastcall.h>
+#include <asm/proto.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 
 /*
- * Macro for the head of wrapped fastcall functions in C.
+ * FASTCALL_WRAPPED_FN - macro for the head of wrapped fastcall functions in C
  *
  * The first parameter is an array of pointers "entry"
  * which corresponds to the fastcall table entry.
@@ -104,6 +152,23 @@
 	long __attribute__((visibility("hidden")))                             \
 	wrapped_##name(void *entry[NR_FC_ATTRIBS + 1], long arg1, long arg2,   \
 		       long arg3, long arg4)
+
+struct syscall_params {
+	unsigned long syscall_nr;
+	long arg0, arg1, arg2, arg3, arg4, arg5;
+};
+
+/*
+ * FASTCALL_WRAPPED_SYS - wrapped function with syscall parameter struct
+ *
+ * The function can store system call parameters in the syscall_params struct
+ * and then return with -ERESTARTSYS to trigger a system call.
+ */
+#define FASTCALL_WRAPPED_SYS(name)                                             \
+	long __attribute__((visibility("hidden")))                             \
+	wrapped_##name(void *entry[NR_FC_ATTRIBS + 1], long arg1, long arg2,   \
+		       long arg3, long arg4,                                   \
+		       struct syscall_params *syscall_params)
 
 /*
  * fastcall_image - common data for all fastcall-in-c image structs.
@@ -117,6 +182,12 @@ struct fastcall_image {
 	unsigned long alt;
 	// Length of this section.
 	unsigned long alt_len;
+	/*
+	 * Address to store the syscall_entry in.
+	 *
+	 * ULONG_MAX if there is no such symbol in the library.
+	 */
+	unsigned long syscall_entry;
 };
 
 /*
@@ -167,6 +238,16 @@ fastcall_prepare_image(const struct fastcall_image *image)
 	// Apply alternatives to the copied image.
 	alt_start = addr + image->alt;
 	apply_alternatives(alt_start, alt_start + image->alt_len);
+
+	// Store address of entry_SYSCALL_64 at syscall_entry
+	if (image->syscall_entry != ULONG_MAX) {
+		unsigned long syscall_entry;
+		unsigned long *syscall_entry_addr;
+
+		rdmsrl(MSR_LSTAR, syscall_entry);
+		syscall_entry_addr = addr + image->syscall_entry;
+		*syscall_entry_addr = syscall_entry;
+	}
 	vunmap(addr);
 
 	return function_pages;

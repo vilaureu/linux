@@ -29,13 +29,20 @@ import os
 from os import stat
 from subprocess import run, PIPE
 import re
+from enum import Enum, auto
 
 BYTES_PER_LINE = 10
 PAGE_SIZE = 2**12
 ALT_REGEX = re.compile(
     r"\.altinstructions\s+([0-9A-Fa-f]+)(?:\s+[0-9A-Fa-f]+){2}\s+([0-9A-Fa-f]+)\s+")
-EXPORTED_FN_REGEX = re.compile(r"([0-9A-Fa-f]{16}) T (.+)")
+ADDR_RE = r"([0-9A-Fa-f]{16})"
+EXPORTED_FN_REGEX = re.compile(ADDR_RE + r" T (.+)")
+SYS_ENTRY_REGEX = re.compile(ADDR_RE + r" R syscall_entry")
 UNDEF_SYM_REGEX = re.compile(r"U (.+)")
+
+
+class SpecialSymbols(Enum):
+    SYSCALL_ENTRY = auto()
 
 
 def main():
@@ -64,6 +71,16 @@ def write_destination(dst, header, struct, size):
         dst.write(",\n")
     dst.write("};\n\n")
 
+    symbols = set(source_symbols())
+    syscall_entry = {s for s in symbols if s[0] is SpecialSymbols.SYSCALL_ENTRY}
+    if len(syscall_entry) == 0:
+        syscall_entry = (1 << 64) - 1
+    elif len(syscall_entry) == 1:
+        syscall_entry = syscall_entry.pop()[1]
+    else:
+        print("multiple syscall_entry symbols found", file=stderr)
+        exit(1)
+
     dst.write(f"const struct {struct} {struct} = {{\n")
     dst.write("\t.image = {\n")
     dst.write("\t\t.data = raw_data,\n")
@@ -72,9 +89,12 @@ def write_destination(dst, header, struct, size):
     (alt, alt_len) = alt_sec()
     dst.write(f"\t\t.alt = {hex(alt)},\n")
     dst.write(f"\t\t.alt_len = {alt_len},\n")
+
+    dst.write(f"\t\t.syscall_entry = {hex(syscall_entry)},\n")
     dst.write("\t},\n")
 
-    symbols = sorted(source_symbols(), key=lambda s: s[1])
+    symbols = {s for s in symbols if isinstance(s[0], str)}
+    symbols = sorted(symbols, key=lambda s: s[1])
     for (name, address) in symbols:
         address = hex(address)
         dst.write(f"\t.sym_{name} = {address},\n")
@@ -125,6 +145,11 @@ def source_symbols():
         if match:
             address = match.group(1)
             yield match.group(2), int(address, 16)
+
+        match = SYS_ENTRY_REGEX.match(line)
+        if match:
+            address = match.group(1)
+            yield SpecialSymbols.SYSCALL_ENTRY, int(address, 16)
 
         match = UNDEF_SYM_REGEX.match(line)
         if match:

@@ -3,25 +3,56 @@
  * fccmp_event.c - eventfd-like interface based on mwait
  */
 
+#include "fccmp_event.h"
+
+#include <linux/types.h>
+#include <linux/gfp.h>
 #include <linux/module.h>
 #include <linux/compiler_types.h>
 #include <linux/cdev.h>
 #include <linux/fs.h>
-#include <linux/ioctl.h>
+#include <linux/slab.h>
 #include <asm-generic/errno-base.h>
 
 MODULE_DESCRIPTION("eventfd-like interface based on mwait.");
 MODULE_LICENSE("GPL");
 
-#define DEVICE_NAME "fccmp-event"
-#define IOCTL_TYPE 0xFC
-#define IOCTL_ZERO _IO(IOCTL_TYPE, 10)
-#define IOCTL_SEM _IO(IOCTL_TYPE, 11)
+/*
+ * ctx - hold the context of an event file descriptor
+ */
+struct ctx {
+	uint64_t counter;
+	bool semaphore;
+};
 
 static dev_t dev;
 static struct cdev *cdev;
 static struct class *class;
 static struct device *device;
+
+/*
+ * open - allocate and initialize internal state
+ */
+static int open(struct inode *inode, struct file *file)
+{
+	struct ctx *ctx;
+
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+
+	file->private_data = ctx;
+	return 0;
+}
+
+/*
+ * release - free the allocated state
+ */
+static int release(struct inode *inode, struct file *file)
+{
+	kfree(file->private_data);
+	return 0;
+}
 
 /*
  * ioctl - react to ioctl invocations
@@ -46,11 +77,13 @@ static int __init fccmp_init(void)
 	int result;
 	static struct file_operations fops = {
 		.owner = THIS_MODULE,
+		.open = open,
+		.release = release,
 		.unlocked_ioctl = ioctl,
 	};
 
 	// Allocate one character device number with dynamic major number
-	result = alloc_chrdev_region(&dev, 0, 1, DEVICE_NAME);
+	result = alloc_chrdev_region(&dev, 0, 1, FCCMP_EVENT_DEVICE);
 	if (result < 0) {
 		pr_warn("fccmp-event: can't allocate chrdev region");
 		goto fail_chrdev;
@@ -74,7 +107,7 @@ static int __init fccmp_init(void)
 	}
 
 	// Create a class for this device
-	class = class_create(THIS_MODULE, DEVICE_NAME);
+	class = class_create(THIS_MODULE, FCCMP_EVENT_DEVICE);
 	if (IS_ERR_VALUE(class)) {
 		pr_warn("fccmp-event: can't create class");
 		result = PTR_ERR(class);
@@ -82,7 +115,7 @@ static int __init fccmp_init(void)
 	}
 
 	// Create a device so it can be linked in /dev/
-	device = device_create(class, NULL, dev, NULL, DEVICE_NAME);
+	device = device_create(class, NULL, dev, NULL, FCCMP_EVENT_DEVICE);
 	if (IS_ERR_VALUE(device)) {
 		pr_warn("fccmp-event: can't create device");
 		result = PTR_ERR(device);

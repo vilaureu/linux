@@ -61,10 +61,23 @@ static int release(struct inode *inode, struct file *file)
  */
 static long ioctl(struct file *file, unsigned int cmd, unsigned long args)
 {
+	struct ctx *ctx = file->private_data;
+
+	if (!(file->f_mode & FMODE_WRITE))
+		return -EPERM;
+
 	switch (cmd) {
+	case FCCMP_EVENT_IOCTL_ZERO:
+		WRITE_ONCE(ctx->semaphore, false);
+		break;
+	case FCCMP_EVENT_IOCTL_SEM:
+		WRITE_ONCE(ctx->semaphore, true);
+		break;
+	default:
+		return -ENOIOCTLCMD;
 	}
 
-	return -ENOIOCTLCMD;
+	return 0;
 }
 
 /*

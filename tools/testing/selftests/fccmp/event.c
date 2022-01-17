@@ -42,4 +42,37 @@ TEST(zero_block)
 	ASSERT_LE(0, close(fd));
 }
 
+/*
+ * semaphore_nonblock - test the driver in semaphore and non-blocking mode
+ */
+TEST(semaphore_nonblock)
+{
+	int fd;
+	uint64_t buf;
+
+	fd = open(DEVICE_PATH, O_RDWR | O_NONBLOCK);
+	ASSERT_LE(0, fd);
+
+	ASSERT_LE(0, ioctl(fd, FCCMP_EVENT_IOCTL_SEM));
+
+	ASSERT_GT(0, read(fd, &buf, sizeof(buf)));
+	ASSERT_EQ(EAGAIN, errno);
+
+	buf = 2;
+	ASSERT_EQ(sizeof(buf), write(fd, &buf, sizeof(buf)));
+
+	buf = 0;
+	ASSERT_EQ(sizeof(buf), read(fd, &buf, sizeof(buf)));
+	ASSERT_EQ(1, buf);
+
+	buf = 0;
+	ASSERT_EQ(sizeof(buf), read(fd, &buf, sizeof(buf)));
+	ASSERT_EQ(1, buf);
+
+	ASSERT_GT(0, read(fd, &buf, sizeof(buf)));
+	ASSERT_EQ(EAGAIN, errno);
+
+	ASSERT_LE(0, close(fd));
+}
+
 TEST_HARNESS_MAIN

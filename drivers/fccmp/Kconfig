@@ -10,7 +10,7 @@ config FCCMP_IOCTL
 	default y
 	select FCCMP_ARRAY
 	help
-	  Creates a device /dev/fccmp which can accepts ioctl system calls.
+	  Creates a device /dev/fccmp which accepts ioctl system calls.
 	  These ioctl calls are used as a comparison when benchmarking the fastcall mechanism.
 
 config FCCMP_SYSCALL
@@ -30,5 +30,14 @@ config FCCMP_VDSO
 	bool "Provide vDSO functions as a comparison to the fastcall mechanism"
 	default y
 	depends on X86
+
+config FCCMP_EVENT
+	tristate "eventfd-like interface based on mwait"
+	default y
+	help
+	  Creates the device /dev/fccmp-event. Upon opening, this device holds an
+	  internal counter and exposes an eventfd-like interface. However, the
+	  waiting is realized via mwait instead of wait queues. This device driver is
+	  used as a comparison to the fastcall-based realization.
 
 endmenu

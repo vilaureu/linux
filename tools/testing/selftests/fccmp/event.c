@@ -7,9 +7,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <time.h>
-#include <sys/mman.h>
-#include <sys/syscall.h>
 #include <fccmp_event.h>
 
 #define DEVICE_PATH ("/dev/" FCCMP_EVENT_DEVICE)

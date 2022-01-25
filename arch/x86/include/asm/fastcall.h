@@ -112,11 +112,6 @@ static inline int setup_fastcall_page(void)
 	return 0;
 }
 
-static inline bool in_fastcall_region(unsigned long start, size_t len)
-{
-	return false;
-}
-
 #endif /* CONFIG_FASTCALL */
 
 #endif /* __ASSEMBLER__ */

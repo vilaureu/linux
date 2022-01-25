@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 #include <asm/bitsperlong.h>
-#include <asm/fastcall.h>
 
 /*
  * This file contains the system call numbers, based on the
@@ -863,8 +862,11 @@ __SYSCALL(__NR_process_madvise, sys_process_madvise)
 #define __NR_epoll_pwait2 441
 __SC_COMP(__NR_epoll_pwait2, sys_epoll_pwait2, compat_sys_epoll_pwait2)
 
+#ifdef CONFIG_FASTCALL
+#include <asm/fastcall.h>
 #define __NR_fastcall NR_fastcall
 __SYSCALL(__NR_fastcall, sys_fastcall);
+#endif
 
 #undef __NR_syscalls
 #define __NR_syscalls 443

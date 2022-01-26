@@ -28,6 +28,8 @@ config X86_64
 	select ARCH_HAS_GIGANTIC_PAGE
 	select ARCH_SUPPORTS_INT128 if CC_HAS_INT128
 	select ARCH_USE_CMPXCHG_LOCKREF
+	select HAVE_FASTCALL
+	select HAVE_FASTCALL_SYSCALL
 	select HAVE_ARCH_SOFT_DIRTY
 	select MODULES_USE_ELF_RELA
 	select NEED_DMA_MAP_STATE
@@ -756,16 +758,6 @@ config SCHED_OMIT_FRAME_POINTER
 	  at the expense of slightly more scheduling overhead.
 
 	  If in doubt, say "Y".
-
-config FASTCALL
-	bool "Enable the fastcall mechanism"
-	depends on X86_64
-	default y
-	help
-	  A new system call is provided which is used to execute fastcalls.
-		These fastcalls can be registered in the kernel and 
-		only provide a minimal kernel interface when executed.
-		In exchange they minimize system call latency.
 
 menuconfig HYPERVISOR_GUEST
 	bool "Linux guest support"

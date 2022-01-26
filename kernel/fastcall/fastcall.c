@@ -4,6 +4,8 @@
  * that execute in a minimal kernel environment with reduced overhead.
  */
 
+#ifdef CONFIG_X86_64
+
 #include <linux/printk.h>
 #include <linux/mm_types.h>
 #include <linux/mmap_lock.h>
@@ -678,3 +680,5 @@ void remove_additional_mapping(unsigned long addr)
 	mmap_write_unlock(mm);
 }
 EXPORT_SYMBOL(remove_additional_mapping);
+
+#endif

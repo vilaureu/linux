@@ -5,7 +5,7 @@
 # Of course, it depends on fastcall.
 config FASTCALL_TEMPLATE
 	tristate "Template for fastcall-based drivers"
-	depends on FASTCALL
+	depends on FASTCALL && X86_64
 	default n
 	help
 	  To learn more about this template, read the

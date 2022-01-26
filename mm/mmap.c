@@ -21,6 +21,7 @@
 #include <linux/syscalls.h>
 #include <linux/capability.h>
 #include <linux/init.h>
+#include <linux/fastcall.h>
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/personality.h>
@@ -2812,12 +2813,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 {
 	unsigned long end;
 	struct vm_area_struct *vma, *prev, *last;
-
-	#ifdef CONFIG_FASTCALL
 	bool in_fc_region = in_fastcall_region(start, len);
-	#else
-	bool in_fc_region = false;
-	#endif
 
 	if ((offset_in_page(start)) ||
 	    ((start > TASK_SIZE || len > TASK_SIZE - start) &&

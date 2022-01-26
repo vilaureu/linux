@@ -2,7 +2,7 @@
 
 config FASTCALL_IN_C
 	tristate "Example fastcall driver for writing fastcall functions in C"
-	depends on FASTCALL
+	depends on FASTCALL && X86_64
 	default m
 	help
 	  This driver provides examples and tools for writing fastcall functions

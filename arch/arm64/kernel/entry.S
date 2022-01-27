@@ -19,6 +19,7 @@
 #include <asm/cpufeature.h>
 #include <asm/errno.h>
 #include <asm/esr.h>
+#include <asm/fastcall.h>
 #include <asm/irq.h>
 #include <asm/memory.h>
 #include <asm/mmu.h>
@@ -694,6 +695,22 @@ SYM_CODE_END(el1_irq)
  */
 	.align	6
 SYM_CODE_START_LOCAL_NOALIGN(el0_sync)
+#ifdef CONFIG_FASTCALL
+	stp	x0, x1, [sp, #-16]
+	mrs	x0, esr_el1
+	and	x1, x0, #ESR_ELx_EC_MASK
+	lsr	x1, x1, #ESR_ELx_EC_SHIFT
+	cmp	x1, #ESR_ELx_EC_SVC64
+	b.ne	0f
+	and	x1, x0, #ESR_ELx_ISS_MASK
+	cmp	x1, #FASTCALL_SVC_IMM
+	b.ne	0f
+	mov	x0, #0xFC
+	eret
+0:
+	ldp	x0, x1, [sp, #-16]
+#endif
+
 	kernel_entry 0
 	mov	x0, sp
 	bl	el0_sync_handler

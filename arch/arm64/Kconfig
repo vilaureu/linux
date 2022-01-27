@@ -163,7 +163,7 @@ config ARM64
 	select HAVE_DYNAMIC_FTRACE_WITH_REGS \
 		if $(cc-option,-fpatchable-function-entry=2)
 	select HAVE_EFFICIENT_UNALIGNED_ACCESS
-	select HAVE_FASTCALL
+	select HAVE_FASTCALL if !(UNMAP_KERNEL_AT_EL0)
 	select HAVE_FAST_GUP
 	select HAVE_FTRACE_MCOUNT_RECORD
 	select HAVE_FUNCTION_TRACER

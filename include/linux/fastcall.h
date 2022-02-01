@@ -55,6 +55,13 @@ struct fastcall_reg_args {
 	unsigned index;
 };
 
+extern int setup_fastcall_page(void);
+extern int register_fastcall(struct fastcall_reg_args *);
+extern unsigned long create_additional_mapping(struct page **, unsigned long,
+					       unsigned long, bool);
+extern void remove_additional_mapping(unsigned long);
+extern void fastcall_remove_mapping(unsigned long);
+
 static inline bool in_fastcall_region(unsigned long start, size_t len)
 {
 	return start >= FASTCALL_BOTTOM && start < FASTCALL_ADDR &&
@@ -62,6 +69,11 @@ static inline bool in_fastcall_region(unsigned long start, size_t len)
 }
 
 #else /* !CONFIG_FASTCALL */
+
+static inline int setup_fastcall_page(void)
+{
+	return 0;
+}
 
 static inline bool in_fastcall_region(unsigned long start, size_t len)
 {

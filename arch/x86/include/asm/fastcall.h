@@ -52,26 +52,12 @@
 
 #define FASTCALL_RND_BITS (__VIRTUAL_MASK_SHIFT - 2)
 
-extern int setup_fastcall_page(void);
-extern int register_fastcall(struct fastcall_reg_args *);
-extern unsigned long create_additional_mapping(struct page **, unsigned long,
-					       unsigned long, bool);
-extern void remove_additional_mapping(unsigned long);
-extern void fastcall_remove_mapping(unsigned long);
-
 /*
  * fastcall_kernel_prot - change user page protection to equivalent kernel one
  */
 static inline pgprot_t fastcall_kernel_prot(pgprot_t pgprot)
 {
 	return __pgprot(pgprot_val(pgprot) & ~_PAGE_USER);
-}
-
-#else
-
-static inline int setup_fastcall_page(void)
-{
-	return 0;
 }
 
 #endif /* CONFIG_FASTCALL */

@@ -26,6 +26,8 @@
 	(void *)(vdso_offset_##name - VDSO_LBASE + (unsigned long)(base)); \
 })
 
+int setup_vdso_pages(struct linux_binprm *, int);
+
 #endif /* !__ASSEMBLY__ */
 
 #endif /* __ASM_VDSO_H */

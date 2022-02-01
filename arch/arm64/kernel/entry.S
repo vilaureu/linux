@@ -705,6 +705,7 @@ SYM_CODE_START_LOCAL_NOALIGN(el0_sync)
 	and	x1, x0, #ESR_ELx_ISS_MASK
 	cmp	x1, #FASTCALL_SVC_IMM
 	b.ne	0f
+	add	sp, sp, #PT_REGS_SIZE
 	mov	x0, #0xFC
 	eret
 0:
@@ -810,6 +811,16 @@ work_pending:
 	ldr	x19, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
 	b	finish_ret_to_user
 SYM_CODE_END(ret_to_user)
+
+#ifdef CONFIG_FASTCALL
+/*
+ * fastcall_noop - fastcall function that just returns -EINVAL
+ */
+SYM_CODE_START(fastcall_noop)
+	mov	x0, #-EINVAL
+	eret
+SYM_CODE_END(fastcall_noop)
+#endif /* CONFIG_FASTCALL */
 
 	.popsection				// .entry.text
 

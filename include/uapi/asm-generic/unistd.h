@@ -862,7 +862,7 @@ __SYSCALL(__NR_process_madvise, sys_process_madvise)
 #define __NR_epoll_pwait2 441
 __SC_COMP(__NR_epoll_pwait2, sys_epoll_pwait2, compat_sys_epoll_pwait2)
 
-#ifdef __HAVE_FASTCALL_SYSCALL
+#ifdef CONFIG_HAVE_FASTCALL_SYSCALL
 #include <asm/fastcall.h>
 #define __NR_fastcall NR_fastcall
 __SYSCALL(__NR_fastcall, sys_fastcall);

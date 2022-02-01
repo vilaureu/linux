@@ -733,6 +733,9 @@ config HAVE_FASTCALL
 config HAVE_FASTCALL_SYSCALL
 	bool
 
+config NEED_FASTCALL_STACK
+	bool
+
 config HAVE_ARCH_SOFT_DIRTY
 	bool
 

@@ -4,8 +4,6 @@
  * that execute in a minimal kernel environment with reduced overhead.
  */
 
-#ifdef CONFIG_X86_64
-
 #include <linux/printk.h>
 #include <linux/mm_types.h>
 #include <linux/mmap_lock.h>
@@ -16,16 +14,14 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/random.h>
-#include <asm/fastcall.h>
+#include <linux/fastcall.h>
 #include <asm/barrier.h>
-#include <asm/page_types.h>
-#include <asm/page_64_types.h>
 
 #define NR_ENTRIES                                                             \
 	((PAGE_SIZE - sizeof(struct mutex)) / sizeof(struct fastcall_entry))
 /*
  * SPECIAL_MAPPING - create a special fastcall mapping, 
- *                   which can not be unmapped
+ *                   which cannot be unmapped
  */
 #define SPECIAL_MAPPING(NAME)                                                  \
 	static const struct vm_special_mapping NAME##_mapping = {              \
@@ -56,7 +52,8 @@ struct fastcall_table {
 /*
  * fn_unmap - struct inserted into vm_special_mapping
  *
- * Allows the registrar of a fastcall function to handle unmapping of additional mappings.
+ * Allows the registrar of a fastcall function to handle unmapping of additional
+ * mappings.
  *
  * @ops    - fastcall_fn_ops. Can be NULL
  * @priv   - Private data of the registrar
@@ -106,10 +103,12 @@ static vm_fault_t fastcall_fault(const struct vm_special_mapping *sm,
  */
 SPECIAL_MAPPING(table)
 
+#ifdef CONFIG_NEED_FASTCALL_STACK
 /*
  * table_mapping - mapping for the fastcall stacks
  */
 SPECIAL_MAPPING(stacks)
+#endif
 
 /*
  * additional_mapping - mapping for shared or private memory regions
@@ -117,7 +116,8 @@ SPECIAL_MAPPING(stacks)
 SPECIAL_MAPPING(additional)
 
 /*
- * unmappable_mapping - a temporary mapping that allows function pages to be unmapped
+ * unmappable_mapping - a temporary mapping that allows function pages to be
+ *                      unmapped
  */
 static const struct vm_special_mapping unmappable_mapping = {
 	.name = "[fastcall_unmap]",
@@ -130,8 +130,8 @@ static const struct vm_special_mapping unmappable_mapping = {
  */
 void vma_set_kernel(struct vm_area_struct *vma)
 {
-	pgprotval_t pgval = pgprot_val(vma->vm_page_prot) & ~_PAGE_USER;
-	WRITE_ONCE(vma->vm_page_prot, __pgprot(pgval));
+	pgprot_t pgprot = fastcall_kernel_prot(vma->vm_page_prot);
+	WRITE_ONCE(vma->vm_page_prot, pgprot);
 }
 
 /*
@@ -151,7 +151,8 @@ static struct vm_area_struct *find_vma_containing(struct mm_struct *mm,
 }
 
 /*
- * fastcall_remove_mapping - remove a fastcall function or any additional mapping at this address
+ * fastcall_remove_mapping - remove a fastcall function or any additional
+ *                           mapping at this address
  *
  * Called with the mmap lock held.
  */
@@ -318,6 +319,7 @@ static void unmap_table(struct fastcall_table *table, struct page *page)
 	unpin_user_page(page);
 }
 
+#ifdef CONFIG_NEED_FASTCALL_STACK
 /*
  * create_stacks - create per-CPU fastcall stacks
  *
@@ -378,6 +380,7 @@ fail_malloc:
 fail_install:
 	return err;
 }
+#endif
 
 /*
  * create_mapping - create and populate a mapping
@@ -397,16 +400,15 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 		.flags = 0,
 		.length = len,
 		.low_limit = TASK_SIZE_MAX,
-		.high_limit = FC_STACK_BOTTOM,
+		.high_limit = FASTCALL_MAP_TOP,
 		.align_mask = 0,
 		.align_offset = 0,
 	};
 
 	// randomized lower limit of fastcall mappings
 	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
-		info.low_limit +=
-			PAGE_ALIGN((get_random_long() &
-				    ((1UL << (__VIRTUAL_MASK_SHIFT - 2)) - 1)));
+		info.low_limit += PAGE_ALIGN(
+			(get_random_long() & ((1UL << FASTCALL_RND_BITS) - 1)));
 
 	addr = vm_unmapped_area(&info);
 	if (IS_ERR_VALUE(addr))
@@ -570,9 +572,11 @@ int register_fastcall(struct fastcall_reg_args *args)
 	if (mmap_write_lock_killable(mm))
 		goto fail_lock;
 
+#ifdef CONFIG_NEED_FASTCALL_STACK
 	ret = create_stacks();
 	if (ret < 0)
 		goto fail_create_stacks;
+#endif
 
 	fn_ptr =
 		install_function_mapping(args->pages, args->num, &fn_unmap_ptr);
@@ -625,8 +629,12 @@ fail_map:
 		fastcall_remove_mapping(fn_ptr);
 	// Marking accessed or dirty is not needed because the pages can not be evicted.
 fail_install_function:
+
+#ifdef CONFIG_NEED_FASTCALL_STACK
 	// There is no need to remove the created stacks
 fail_create_stacks:
+#endif
+
 	mmap_write_unlock(mm);
 fail_lock:
 	if (ret < 0)
@@ -680,5 +688,3 @@ void remove_additional_mapping(unsigned long addr)
 	mmap_write_unlock(mm);
 }
 EXPORT_SYMBOL(remove_additional_mapping);
-
-#endif

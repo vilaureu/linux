@@ -61,6 +61,7 @@ extern unsigned long create_additional_mapping(struct page **, unsigned long,
 					       unsigned long, bool);
 extern void remove_additional_mapping(unsigned long);
 extern void fastcall_remove_mapping(unsigned long);
+extern int fastcall_dup_table(struct mm_struct *, struct mm_struct *);
 
 static inline bool in_fastcall_region(unsigned long start, size_t len)
 {
@@ -71,6 +72,12 @@ static inline bool in_fastcall_region(unsigned long start, size_t len)
 #else /* !CONFIG_FASTCALL */
 
 static inline int setup_fastcall_page(void)
+{
+	return 0;
+}
+
+static inline int fastcall_dup_table(struct mm_struct *oldmm,
+				     struct mm_struct *mm)
 {
 	return 0;
 }

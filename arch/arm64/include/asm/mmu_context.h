@@ -11,6 +11,7 @@
 #ifndef __ASSEMBLY__
 
 #include <linux/compiler.h>
+#include <linux/fastcall.h>
 #include <linux/sched.h>
 #include <linux/sched/hotplug.h>
 #include <linux/mm_types.h>
@@ -19,12 +20,19 @@
 #include <asm/cacheflush.h>
 #include <asm/cpufeature.h>
 #include <asm/proc-fns.h>
-#include <asm-generic/mm_hooks.h>
 #include <asm/cputype.h>
 #include <asm/sysreg.h>
 #include <asm/tlbflush.h>
 
+#define ARCH_HAS_DUP_MMAP
+#include <asm-generic/mm_hooks.h>
+
 extern bool rodata_full;
+
+static inline int arch_dup_mmap(struct mm_struct *oldmm, struct mm_struct *mm)
+{
+	return fastcall_dup_table(oldmm, mm);
+}
 
 static inline void contextidr_thread_switch(struct task_struct *next)
 {

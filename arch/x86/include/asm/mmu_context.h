@@ -4,6 +4,7 @@
 
 #include <asm/desc.h>
 #include <linux/atomic.h>
+#include <linux/fastcall.h>
 #include <linux/mm_types.h>
 #include <linux/pkeys.h>
 
@@ -163,15 +164,6 @@ static inline void arch_dup_pkeys(struct mm_struct *oldmm,
 	mm->context.execute_only_pkey   = oldmm->context.execute_only_pkey;
 #endif
 }
-
-#ifdef CONFIG_FASTCALL
-extern int fastcall_dup_table(struct mm_struct *, struct mm_struct *);
-#else
-static inline int fastcall_dup_table(struct mm_struct *oldmm, struct mm_struct *mm)
-{
-	return 0;
-}
-#endif
 
 static inline int arch_dup_mmap(struct mm_struct *oldmm, struct mm_struct *mm)
 {

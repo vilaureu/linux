@@ -67,6 +67,8 @@ struct fn_unmap {
 	unsigned index;
 };
 
+unsigned long fastcall_addr = 0;
+
 /*
  * fastcall_mremap - prohibit any remapping of the fastcall pages
  */
@@ -688,3 +690,14 @@ void remove_additional_mapping(unsigned long addr)
 	mmap_write_unlock(mm);
 }
 EXPORT_SYMBOL(remove_additional_mapping);
+
+/*
+ * fastcall_init - initialize the fastcall_addr variable with FASTCALL_ADDR
+ *
+ * This is required for using the fastcall address in assembly on arm64.
+ */
+static int __init fastcall_init(void) {
+	fastcall_addr = FASTCALL_ADDR;
+	return 0;
+}
+subsys_initcall(fastcall_init);

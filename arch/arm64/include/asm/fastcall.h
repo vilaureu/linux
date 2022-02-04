@@ -40,8 +40,8 @@ static inline pgprot_t fastcall_kernel_prot(pgprot_t pgprot)
 	pteval_t pteval = pgprot_val(pgprot);
 
 	pteval &= ~PTE_USER;
-	if (pteval & PTE_UXN)
-		pteval |= PTE_PXN;
+	if (!(pteval & PTE_UXN))
+		pteval &= ~PTE_PXN;
 
 	pteval |= PTE_UXN;
 

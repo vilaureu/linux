@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * fastcall_functions.S - example fastcall functions
+ * functions_x86_64.S - example fastcall functions
  *
  * They are mapped to user space and executed by the fastcall system call.
  */
@@ -10,20 +10,19 @@
 #include <asm-generic/errno-base.h>
 #include <asm/smap.h>
 #include <asm/fastcall_module.h>
+#include "fastcall_examples.h"
 
 #define SARG0 (1 * 8)
 #define SARG1 (2 * 8)
 #define ARG1 %rsi
 #define ARG2 %rdx
-#define DATA_SIZE 64
-#define ARRAY_LENGTH (PAGE_SIZE / DATA_SIZE)
 
 /*
  * Setup code for the source and destination addresses of the array functions.
  */
 .macro STATIC_ARRAY_ARGS
 	movq SARG1(%rax), %rdi
-	imulq $DATA_SIZE, ARG1
+	imulq $FC_DATA_SIZE, ARG1
 	addq %rdi, ARG1
 	movq SARG0(%rax), %rdi
 .endm
@@ -78,15 +77,15 @@ SYM_CODE_END(fce_write_ptr)
  *
  * The first argument is the index into the array;
  * The second argument is the size of the data in bytes.
- * The data can be up to DATA_SIZE charactes long.
+ * The data can be up to FC_DATA_SIZE charactes long.
  * The data is copied in 8 byte granularity.
  */
 SYM_CODE_START(fce_array)
 	UNWIND_HINT_EMPTY
 
-	cmpq $ARRAY_LENGTH, ARG1
+	cmpq $FC_ARRAY_LENGTH, ARG1
 	jae inval
-	cmpq $DATA_SIZE, ARG2
+	cmpq $FC_DATA_SIZE, ARG2
 	ja inval
 
 	STATIC_ARRAY_ARGS
@@ -118,19 +117,19 @@ SYM_CODE_END(fce_array)
  * fce_array_nt - like fce_array but with non-temporal hint
  *
  * The first argument is the index into the array;
- * DATA_SIZE charactes of data are copied to the array.
+ * FC_DATA_SIZE charactes of data are copied to the array.
  */
 SYM_CODE_START(fce_array_nt)
 	UNWIND_HINT_EMPTY
 
-	cmpq $ARRAY_LENGTH, ARG1
+	cmpq $FC_ARRAY_LENGTH, ARG1
 	jae inval
 
 	STATIC_ARRAY_ARGS
 
 	ASM_STAC
 
-	// Copy DATA_SIZE=64 bytes from (%rdi) to (%rsi)
+	// Copy FC_DATA_SIZE=64 bytes from (%rdi) to (%rsi)
 	vmovdqa (%rdi), %ymm0
 	vmovdqa 32(%rdi), %ymm1
 	vmovntdq %ymm0, (%rsi)

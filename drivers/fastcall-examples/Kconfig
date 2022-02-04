@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 config FASTCALL_EXAMPLES
 	tristate "Driver with example fastcalls"
-	depends on FASTCALL && X86_64
+	depends on FASTCALL && (X86_64 || ARM64)
 	default y
 	help
 	  Enable the fastcall-examples driver, which adds some example fastcalls

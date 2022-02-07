@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * fccmp_nt.c - provide a function for copying a char sequence with a non-temporal hint
+ * fccmp_nt.c - function for copying a char sequence with a non-temporal hint
  */
 
 #include "fccmp_nt.h"
@@ -16,9 +16,10 @@ asmlinkage void fccmp_avx_copy(void *to, void *from);
 static __ro_after_init DEFINE_STATIC_KEY_FALSE(use_avx2);
 
 /*
- * fccmp_copy_array_nt - copy FCCMP_DATA_SIZE chars from data to the array page at the index.
+ * fccmp_copy_array_nt - copy from data to the array page at the index
  *
  * Returns -EBUSY if AVX2 is not available.
+ * FCCMP_DATA_SIZE bytes are copied.
  */
 int fccmp_copy_array_nt(const char __user *data, unsigned char index)
 {

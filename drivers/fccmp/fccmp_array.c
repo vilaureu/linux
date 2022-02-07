@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * fccmp_array.c - functions for copying a character sequence from user space to an array in kernel space
+ * fccmp_array.c - copy a sequence from user space to an array in kernel space
  */
 
 #include "fccmp_array.h"
@@ -13,7 +13,7 @@
 struct page *fccmp_page;
 
 /*
- * fccmp_copy_array - copy size characters from data to the array page at the index.
+ * fccmp_copy_array - copy characters from data to the array page at the index
  */
 int fccmp_copy_array(const char __user *data, unsigned char index,
 		     unsigned char size)

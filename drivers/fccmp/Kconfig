@@ -6,12 +6,13 @@ config FCCMP_ARRAY
 	bool
 
 config FCCMP_IOCTL
-	tristate "Character device driver for comparing ioctl functions with the fastcall mechanism"
+	tristate "Character device for comparing ioctls with fastcalls"
 	default y
 	select FCCMP_ARRAY
 	help
 	  Creates a device /dev/fccmp which accepts ioctl system calls.
-	  These ioctl calls are used as a comparison when benchmarking the fastcall mechanism.
+	  These ioctl calls are used as a comparison when benchmarking the
+	  fastcall mechanism.
 
 config FCCMP_SYSCALL
 	bool "New system calls as a comparison to the fastcall mechanism"
@@ -20,7 +21,7 @@ config FCCMP_SYSCALL
 	select FCCMP_ARRAY
 
 config FCCMP_NT
-	bool "Provide a function for copying a char sequence with a non-temporal hint"
+	bool "Function for copying a char sequence with a non-temporal hint"
 	default y
 	depends on FCCMP_ARRAY && X86_64
 	help
@@ -36,9 +37,9 @@ config FCCMP_EVENT
 	default y
 	depends on X86_64
 	help
-	  Creates the device /dev/fccmp-event. Upon opening, this device holds an
-	  internal counter and exposes an eventfd-like interface. However, the
-	  waiting is realized via mwait instead of wait queues. This device driver is
-	  used as a comparison to the fastcall-based realization.
+	  Creates the device /dev/fccmp-event. Upon opening, this device holds
+	  an internal counter and exposes an eventfd-like interface. However,
+	  the waiting is realized via mwait instead of wait queues. This device
+	  driver is used as a comparison to the fastcall-based realization.
 
 endmenu

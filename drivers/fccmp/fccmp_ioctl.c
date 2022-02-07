@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * fccmp_ioctl.c - character device driver for comparing ioctl functions with the fastcall mechanism
+ * fccmp_ioctl.c - character device for comparing ioctls with fastcalls
  */
 
 #include "fccmp_array.h"
@@ -12,8 +12,7 @@
 #include <linux/ioctl.h>
 #include <asm-generic/errno-base.h>
 
-MODULE_DESCRIPTION(
-	"A character device driver for comparing ioctl functions with the fastcall mechanism.");
+MODULE_DESCRIPTION("A character device for comparing ioctls with fastcalls.");
 MODULE_LICENSE("GPL");
 
 struct array_args {

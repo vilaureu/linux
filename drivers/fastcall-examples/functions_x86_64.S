@@ -73,11 +73,11 @@ SYM_CODE_START(fce_write_ptr)
 SYM_CODE_END(fce_write_ptr)
 
 /*
- * fce_array - copy data from the shared memroy region
+ * fce_array - copy data from the shared memory region
  *
  * The first argument is the index into the array;
  * The second argument is the size of the data in bytes.
- * The data can be up to FC_DATA_SIZE charactes long.
+ * The data can be up to FC_DATA_SIZE characters long.
  * The data is copied in 8 byte granularity.
  */
 SYM_CODE_START(fce_array)

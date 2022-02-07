@@ -4,6 +4,8 @@
 
 #ifdef __ASSEMBLER__
 
+#include <asm/page.h>
+
 #define FC_DATA_SIZE 64
 #define FC_ARRAY_LENGTH (PAGE_SIZE / FC_DATA_SIZE)
 

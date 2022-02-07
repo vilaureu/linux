@@ -696,20 +696,20 @@ SYM_CODE_END(el1_irq)
 	.align	6
 SYM_CODE_START_LOCAL_NOALIGN(el0_sync)
 #ifdef CONFIG_FASTCALL
-	stp	x0, x1, [sp, #-16]
-	mrs	x0, esr_el1
-	and	x1, x0, #ESR_ELx_EC_MASK
-	lsr	x1, x1, #ESR_ELx_EC_SHIFT
-	cmp	x1, #ESR_ELx_EC_SVC64
+	stp	x9, x10, [sp, #-16]
+	mrs	x9, esr_el1
+	and	x10, x9, #ESR_ELx_EC_MASK
+	lsr	x10, x10, #ESR_ELx_EC_SHIFT
+	cmp	x10, #ESR_ELx_EC_SVC64
 	b.ne	0f
-	and	x1, x0, #ESR_ELx_ISS_MASK
-	cmp	x1, #FASTCALL_SVC_IMM
+	and	x10, x9, #ESR_ELx_ISS_MASK
+	cmp	x10, #FASTCALL_SVC_IMM
 	b.ne	0f
 	add	sp, sp, #PT_REGS_SIZE
 	b	fastcall
 	eret
 0:
-	ldp	x0, x1, [sp, #-16]
+	ldp	x9, x10, [sp, #-16]
 #endif
 
 	kernel_entry 0

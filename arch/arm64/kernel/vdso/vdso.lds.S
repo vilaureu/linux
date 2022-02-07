@@ -77,6 +77,8 @@ VERSION
 		__kernel_gettimeofday;
 		__kernel_clock_gettime;
 		__kernel_clock_getres;
+		__vdso_fccmp_noop;
+		__vdso_fccmp_copy_array;	
 	local: *;
 	};
 }

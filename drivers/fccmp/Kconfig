@@ -30,7 +30,7 @@ config FCCMP_NT
 config FCCMP_VDSO
 	bool "Provide vDSO functions as a comparison to the fastcall mechanism"
 	default y
-	depends on X86
+	depends on X86 || ARM64
 
 config FCCMP_EVENT
 	tristate "eventfd-like interface based on mwait"

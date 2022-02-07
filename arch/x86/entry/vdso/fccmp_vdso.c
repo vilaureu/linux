@@ -15,8 +15,11 @@ notrace long __vdso_fccmp_noop(void)
 }
 
 #ifdef CONFIG_X86_64
+
 /*
- * __vdso_fccmp_copy_array - copy `size` characters from `from` to `to` at index `index`.
+ * __vdso_fccmp_copy_array - copy character sequence
+ *
+ * Copies `size` characters from `from` to `to` at index `index`.
  *
  * `to` is thereby interpreted as an array of 64 byte strings.
  */

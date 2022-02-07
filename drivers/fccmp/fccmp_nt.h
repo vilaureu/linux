@@ -5,7 +5,7 @@
 #ifdef CONFIG_FCCMP_NT
 extern int fccmp_copy_array_nt(const char *, unsigned char);
 #else
-int fccmp_copy_array_nt(const char *data, unsigned char index)
+static inline int fccmp_copy_array_nt(const char *data, unsigned char index)
 {
 	return -EBUSY;
 }

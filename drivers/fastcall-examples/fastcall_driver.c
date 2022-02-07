@@ -128,8 +128,6 @@ static const struct fastcall_fn_ops single_fn_ops = {
 	.free = single_free,
 };
 
-#ifdef CONFIG_X86_64 /* TODO: implement for arm64 */
-
 /*
  * private_example - example for the use of private memory regions for a fastcall
  */
@@ -161,8 +159,6 @@ fail_create:
 fail_alloc:
 	return ret;
 }
-
-#endif /* CONFIG_X86_64 */
 
 static void array_unmap(void *priv)
 {
@@ -349,10 +345,10 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		reg_args = args_for(fce_stack);
 		ret = register_and_copy(reg_args, args);
 		break;
-#ifdef CONFIG_X86_64 /* TODO: implement for arm64 */
 	case FCE_IOCTL_PRIV:
 		ret = private_example(args);
 		break;
+#ifdef CONFIG_X86_64 /* TODO: implement for arm64 */
 	case FCE_IOCTL_ARRAY:
 		ret = array_example(args, fce_array);
 		break;

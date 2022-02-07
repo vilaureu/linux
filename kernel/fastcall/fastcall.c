@@ -137,6 +137,15 @@ void vma_set_kernel(struct vm_area_struct *vma)
 }
 
 /*
+ * vma_revise_write - if vma is writable, force pte writable without faults
+ */
+void vma_revise_write(struct vm_area_struct *vma)
+{
+	pgprot_t pgprot = fastcall_write_prot(vma->vm_page_prot);
+	WRITE_ONCE(vma->vm_page_prot, pgprot);
+}
+
+/*
  * find_vma_containing - find a vma containing the address
  *
  * Return NULL if the vma is not found.
@@ -350,6 +359,7 @@ static int create_stacks(void)
 		goto fail_install;
 
 	vma_set_kernel(vma);
+	vma_revise_write(vma);
 
 	pages = kmalloc(nr_cpu_ids * sizeof(struct page *), GFP_KERNEL);
 	err = -ENOMEM;
@@ -422,6 +432,7 @@ static unsigned long create_mapping(struct page **pages, unsigned long num,
 
 	if (!user)
 		vma_set_kernel(vma);
+	vma_revise_write(vma);
 
 	err = vm_insert_pages(vma, addr, pages, &num);
 	if (err) {
@@ -696,7 +707,8 @@ EXPORT_SYMBOL(remove_additional_mapping);
  *
  * This is required for using the fastcall address in assembly on arm64.
  */
-static int __init fastcall_init(void) {
+static int __init fastcall_init(void)
+{
 	fastcall_addr = FASTCALL_ADDR;
 	return 0;
 }

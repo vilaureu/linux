@@ -60,6 +60,11 @@ static inline pgprot_t fastcall_kernel_prot(pgprot_t pgprot)
 	return __pgprot(pgprot_val(pgprot) & ~_PAGE_USER);
 }
 
+static inline pgprot_t fastcall_write_prot(pgprot_t pgprot)
+{
+	return pgprot;
+}
+
 #endif /* CONFIG_FASTCALL */
 
 #endif /* __ASSEMBLER__ */

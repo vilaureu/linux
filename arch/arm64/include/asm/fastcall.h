@@ -29,6 +29,7 @@
 #ifndef __ASSEMBLER__
 
 #include <asm/pgtable-types.h>
+#include <asm/pgtable-prot.h>
 
 #define FASTCALL_RND_BITS (vabits_actual - 2)
 
@@ -44,6 +45,19 @@ static inline pgprot_t fastcall_kernel_prot(pgprot_t pgprot)
 		pteval &= ~PTE_PXN;
 
 	pteval |= PTE_UXN;
+
+	return __pgprot(pteval);
+}
+
+/*
+ * fastcall_write_prot - if PTE_WRITE is set, unset PTE_RDONLY
+ */
+static inline pgprot_t fastcall_write_prot(pgprot_t pgprot)
+{
+	pteval_t pteval = pgprot_val(pgprot);
+
+	if (pteval & PTE_WRITE)
+		pteval &= ~PTE_RDONLY;
 
 	return __pgprot(pteval);
 }

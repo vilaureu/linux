@@ -345,11 +345,11 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		reg_args = args_for(fce_noop);
 		ret = register_and_copy(reg_args, args);
 		break;
-#ifdef CONFIG_X86_64 /* TODO: implement for arm64 */
 	case FCE_IOCTL_STACK:
 		reg_args = args_for(fce_stack);
 		ret = register_and_copy(reg_args, args);
 		break;
+#ifdef CONFIG_X86_64 /* TODO: implement for arm64 */
 	case FCE_IOCTL_PRIV:
 		ret = private_example(args);
 		break;

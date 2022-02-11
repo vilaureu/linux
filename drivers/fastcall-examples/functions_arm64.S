@@ -45,12 +45,10 @@ SYM_CODE_END(fce_noop)
  * Tests the stack functionality by writing to and reading from it.
  */
 SYM_CODE_START(fce_stack)
-	sub	sp, sp, 8
+	// Stack pointer need to be 16-byte aligned on arm64
+	str	x0, [sp, #-16]!
+	ldr	x0, [sp], #16
 
-	str	x0, [sp]
-	ldr	x0, [sp]
-
-	add	sp, sp, 8
 	eret
 SYM_CODE_END(fce_stack)
 
@@ -60,10 +58,11 @@ SYM_CODE_END(fce_stack)
  * Writes to and reads from the address stored in the first entry attribute.
  */
 SYM_CODE_START(fce_write_ptr)
-	// Stack pointer need to be 16-byte aligned on arm64
-	str	x0, [sp, #-16]!
-	ldr	x0, [sp], #16
+	ldr	x9, SARG0
 
+	str	x0, [x9]
+	ldr	x0, [x9]
+	add	x0, x0, #1
 	eret
 SYM_CODE_END(fce_write_ptr)
 

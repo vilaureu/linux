@@ -60,11 +60,10 @@ SYM_CODE_END(fce_stack)
  * Writes to and reads from the address stored in the first entry attribute.
  */
 SYM_CODE_START(fce_write_ptr)
-	ldr	x9, SARG0
+	// Stack pointer need to be 16-byte aligned on arm64
+	str	x0, [sp, #-16]!
+	ldr	x0, [sp], #16
 
-	str	x0, [x9]
-	ldr	x0, [x9]
-	add	x0, x0, #1
 	eret
 SYM_CODE_END(fce_write_ptr)
 

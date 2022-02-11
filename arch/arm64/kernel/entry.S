@@ -816,7 +816,7 @@ SYM_CODE_END(ret_to_user)
 
 /*
  * Call the desired fastcall function using the fastcall table.
- * 
+ *
  * The registers are used in the following way:
  * x8          in: index into the fastcall table
  *            out: address of fastcall table entry

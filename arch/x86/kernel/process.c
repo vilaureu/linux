@@ -24,6 +24,7 @@
 #include <linux/cpuidle.h>
 #include <linux/acpi.h>
 #include <linux/elf-randomize.h>
+#include <linux/fastcall.h>
 #include <trace/events/power.h>
 #include <linux/hw_breakpoint.h>
 #include <asm/cpu.h>
@@ -44,7 +45,6 @@
 #include <asm/proto.h>
 #include <asm/frame.h>
 #include <asm/vdso.h>
-#include <asm/fastcall.h>
 
 #include "process.h"
 

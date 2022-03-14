@@ -10,7 +10,6 @@
 #include <linux/cdev.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
-#include <asm/fastcall.h>
 #include "functions.h"
 
 MODULE_DESCRIPTION("An example for writing fastcall functions in C.");

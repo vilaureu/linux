@@ -11,7 +11,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
-#include <fastcall_examples.h>
+#include "fastcall_examples.h"
 
 #define MAGIC 42
 /*

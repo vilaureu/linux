@@ -13,7 +13,6 @@
 #include <linux/cdev.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
-#include <asm/fastcall.h>
 
 #include "functions.h"
 

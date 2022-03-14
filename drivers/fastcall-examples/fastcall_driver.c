@@ -4,13 +4,13 @@
  */
 
 #include <linux/module.h>
+#include <linux/fastcall.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/mm.h>
 #include <linux/highmem.h>
 #include <linux/minmax.h>
 #include <linux/slab.h>
-#include <asm/fastcall.h>
 #include <asm/pgtable.h>
 #include <asm/cpufeature.h>
 #include "fastcall_examples.h"
@@ -265,6 +265,7 @@ fail_malloc:
 	return ret;
 }
 
+#ifdef CONFIG_X86_64
 /*
  * mwait_example - wait for a memory change using MWAIT
  *
@@ -325,6 +326,7 @@ fail_shared_create:
 fail_shared_alloc:
 	return ret;
 }
+#endif /* CONFIG_X86_64 */
 
 /*
  * fce_ioctl() - register the example fastcall specified by cmd
@@ -349,6 +351,7 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 	case FCE_IOCTL_ARRAY:
 		ret = array_example(args, fce_array);
 		break;
+#ifdef CONFIG_X86_64
 	case FCE_IOCTL_NT:
 		if (boot_cpu_has(X86_FEATURE_AVX2) &&
 		    boot_cpu_has(X86_FEATURE_AVX))
@@ -361,6 +364,13 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 		    boot_cpu_has(X86_FEATURE_ARAT))
 			ret = mwait_example(args);
 		break;
+#elif CONFIG_ARM64
+#if 0 /* TODO: implement for arm64 */
+	case FCE_IOCTL_NT:
+		ret = array_example(args, fce_array_nt);
+		break;
+#endif
+#endif
 	}
 
 	return ret == 1 ? -EFAULT : ret;

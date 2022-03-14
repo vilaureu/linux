@@ -2032,6 +2032,19 @@ config PROFILING
 config TRACEPOINTS
 	bool
 
+config FASTCALL
+	bool "Enable the fastcall mechanism"
+	depends on HAVE_FASTCALL
+	default y
+	help
+	  A new system call is provided which is used to execute fastcalls.
+	  These fastcalls can be registered in the kernel and 
+	  only provide a minimal kernel interface when executed.
+	  In exchange they minimize system call latency.
+
+	  Currently, fastcalls are not available under arm64 if UNMAP_KERNEL_AT_EL0
+	  is active.
+
 endmenu		# General setup
 
 source "arch/Kconfig"

@@ -43,9 +43,9 @@
  * TASK_UNMAPPED_BASE - the lower boundary of the mmap VM area.
  */
 
-#define DEFAULT_MAP_WINDOW_64	(UL(1) << VA_BITS_MIN)
-#define TASK_SIZE_64		(UL(1) << vabits_actual)
-#define TASK_SIZE_MAX		(UL(1) << VA_BITS)
+#define DEFAULT_MAP_WINDOW_64	(UL(1) << (VA_BITS_MIN - 1))
+#define TASK_SIZE_64		(UL(1) << (vabits_actual - 1))
+#define TASK_SIZE_MAX		TASK_SIZE_64
 
 #ifdef CONFIG_COMPAT
 #if defined(CONFIG_ARM64_64K_PAGES) && defined(CONFIG_KUSER_HELPERS)

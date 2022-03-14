@@ -2,6 +2,15 @@
 #ifndef _FASTCALL_EXAMPLES_H
 #define _FASTCALL_EXAMPLES_H
 
+#ifdef __ASSEMBLER__
+
+#include <asm/page.h>
+
+#define FC_DATA_SIZE 64
+#define FC_ARRAY_LENGTH (PAGE_SIZE / FC_DATA_SIZE)
+
+#else /* !__ASSEMBLER__ */
+
 #define FCE_DEVICE_NAME "fastcall-examples"
 
 /*
@@ -47,4 +56,5 @@ typedef struct array_args mwait_args_struct;
 #define FCE_IOCTL_NT (FCE_ARRAY_LIKE(4))
 #define FCE_IOCTL_MWAIT (_IOR(FCE_TYPE, 5, mwait_args_struct))
 
+#endif /* !__ASSEMBLER__ */
 #endif /* _FASTCALL_EXAMPLES_H */

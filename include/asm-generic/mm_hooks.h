@@ -7,11 +7,13 @@
 #ifndef _ASM_GENERIC_MM_HOOKS_H
 #define _ASM_GENERIC_MM_HOOKS_H
 
+#ifndef ARCH_HAS_DUP_MMAP
 static inline int arch_dup_mmap(struct mm_struct *oldmm,
 				struct mm_struct *mm)
 {
 	return 0;
 }
+#endif
 
 static inline void arch_exit_mmap(struct mm_struct *mm)
 {

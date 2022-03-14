@@ -135,7 +135,7 @@
 
 #else /* !__ASSEMBLER__ */
 
-#include <asm/fastcall.h>
+#include <linux/fastcall.h>
 #include <asm/proto.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>

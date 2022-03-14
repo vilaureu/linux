@@ -10,7 +10,7 @@
 #include <linux/cdev.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
-#include <asm/fastcall.h>
+#include <asm/fastcall_module.h>
 
 MODULE_DESCRIPTION("A template for fastcall-based drivers.");
 

@@ -13,6 +13,7 @@
 #include <linux/efi.h>
 #include <linux/elf.h>
 #include <linux/export.h>
+#include <linux/fastcall.h>
 #include <linux/sched.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task.h>
@@ -57,6 +58,7 @@
 #include <asm/processor.h>
 #include <asm/pointer_auth.h>
 #include <asm/stacktrace.h>
+#include <asm/vdso.h>
 
 #if defined(CONFIG_STACKPROTECTOR) && !defined(CONFIG_STACKPROTECTOR_PER_TASK)
 #include <linux/stackprotector.h>
@@ -733,3 +735,13 @@ int arch_elf_adjust_prot(int prot, const struct arch_elf_state *state,
 	return prot;
 }
 #endif
+
+
+int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp) {
+	int retval = 0;
+	retval = setup_vdso_pages(bprm, uses_interp);
+	if (retval < 0)
+		return retval;
+	
+	return setup_fastcall_page();
+}

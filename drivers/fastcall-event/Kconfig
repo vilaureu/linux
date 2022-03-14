@@ -2,7 +2,7 @@
 
 config FASTCALL_EVENT
 	tristate "Fastcalls for an event wait mechanism similar to eventfd"
-	depends on FASTCALL
+	depends on FASTCALL && X86_64
 	default m
 	help
 	  This driver provides fastcalls which allow applications to wait for

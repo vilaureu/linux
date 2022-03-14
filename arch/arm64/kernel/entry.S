@@ -19,6 +19,7 @@
 #include <asm/cpufeature.h>
 #include <asm/errno.h>
 #include <asm/esr.h>
+#include <asm/fastcall.h>
 #include <asm/irq.h>
 #include <asm/memory.h>
 #include <asm/mmu.h>
@@ -694,6 +695,23 @@ SYM_CODE_END(el1_irq)
  */
 	.align	6
 SYM_CODE_START_LOCAL_NOALIGN(el0_sync)
+#ifdef CONFIG_FASTCALL
+	stp	x9, x10, [sp, #-16]
+	mrs	x9, esr_el1
+	and	x10, x9, #ESR_ELx_EC_MASK
+	lsr	x10, x10, #ESR_ELx_EC_SHIFT
+	cmp	x10, #ESR_ELx_EC_SVC64
+	b.ne	0f
+	and	x10, x9, #ESR_ELx_ISS_MASK
+	cmp	x10, #FASTCALL_SVC_IMM
+	b.ne	0f
+	add	sp, sp, #PT_REGS_SIZE
+	b	fastcall
+	eret
+0:
+	ldp	x9, x10, [sp, #-16]
+#endif
+
 	kernel_entry 0
 	mov	x0, sp
 	bl	el0_sync_handler
@@ -793,6 +811,42 @@ work_pending:
 	ldr	x19, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
 	b	finish_ret_to_user
 SYM_CODE_END(ret_to_user)
+
+#ifdef CONFIG_FASTCALL
+
+/*
+ * Call the desired fastcall function using the fastcall table.
+ *
+ * The registers are used in the following way:
+ * x8          in: index into the fastcall table
+ *            out: address of fastcall table entry
+ * x0..x7  in/out: fastcall parameters
+ */
+SYM_CODE_START_LOCAL(fastcall)
+	// Execute no-op function if index is invalid
+	cmp x8, #FC_NR_ENTRIES
+	b.cs fastcall_noop
+
+	// Load function address
+	ldr_l	x9, fastcall_addr
+	mov	x10, #FC_ENTRY_SIZE
+	madd	x8, x8, x10, x9
+
+	// This loads with aquire semantics
+	ldar	x9, [x8]
+
+	br x9
+SYM_CODE_END(fastcall)
+
+/*
+ * fastcall_noop - fastcall function that just returns -EINVAL
+ */
+SYM_CODE_START(fastcall_noop)
+	mov	x0, #-EINVAL
+	eret
+SYM_CODE_END(fastcall_noop)
+
+#endif /* CONFIG_FASTCALL */
 
 	.popsection				// .entry.text
 

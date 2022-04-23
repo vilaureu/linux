@@ -6,6 +6,8 @@ Fastcall
 
 The fastcall architecture is implemented in arch/x86/fastcall .
 An example driver is located at drivers/fastcall-examples .
+You can view Documentation/fastcall/Architecture.md for an architectural
+overview.
 Have a look at Documentation/fastcall/Template.md before creating a new
 driver.
 

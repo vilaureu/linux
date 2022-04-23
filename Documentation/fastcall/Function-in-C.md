@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: GPL-2.0 -->
+
 # Fastcall Functions in C
 
 This document describes how fastcall functions can be written in C

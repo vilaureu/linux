@@ -189,6 +189,9 @@ COND_SYSCALL(getgroups);
 
 /* kernel/timer.c */
 
+/* drivers/syscall-bench/syscall_bench.c */
+COND_SYSCALL(syscall_bench);
+
 /* ipc/mqueue.c */
 COND_SYSCALL(mq_open);
 COND_SYSCALL_COMPAT(mq_open);

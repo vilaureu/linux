@@ -42,4 +42,14 @@ config FCCMP_EVENT
 	  the waiting is realized via mwait instead of wait queues. This device
 	  driver is used as a comparison to the fastcall-based realization.
 
+config SYSCALL_BENCH
+	bool "measure the latency of steps in the system call execution"
+	default n
+	depends on X86_64
+	help
+	  This adds a new system call, which takes latency measurements during
+	  invocation and exposes them to the user.
+	  WARNING: This compromises kernel security and adds latency to all
+	  system calls.
+
 endmenu

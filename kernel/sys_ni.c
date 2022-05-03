@@ -193,6 +193,9 @@ COND_SYSCALL(getgroups);
 COND_SYSCALL(fccmp_array);
 COND_SYSCALL(fccmp_nt);
 
+/* drivers/fccmp/syscall_bench.c */
+COND_SYSCALL(syscall_bench);
+
 /* ipc/mqueue.c */
 COND_SYSCALL(mq_open);
 COND_SYSCALL_COMPAT(mq_open);

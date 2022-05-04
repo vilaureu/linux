@@ -78,7 +78,6 @@ SYM_CODE_END(native_usergs_sysret64)
 	.if \epilog == 1
 		movq	%r8, %rcx
 		movq	%r10, %rbx
-		clac
 	.endif
 0:
 #endif /* CONFIG_SYSCALL_BENCH */
@@ -150,6 +149,24 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	pushq	%rax					/* pt_regs->orig_ax */
 
 	PUSH_AND_CLEAR_REGS rax=$-ENOSYS
+
+#ifdef CONFIG_SYSCALL_BENCH
+	cmpw	$SYS_SYSCALL_BENCH, %ax
+	jne	0f
+	xorl	%eax, %eax
+	cpuid
+	movl	RDI(%rsp), %ecx
+	rdpmc
+	salq	$32, %rdx
+	addq	%rdx, %rax
+	movq	RSI(%rsp), %rsi
+	movq	%rax, (3 * 8)(%rsi)
+	xorl	%eax, %eax
+	cpuid
+	movw	$SYS_SYSCALL_BENCH, %ax
+	clac
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
 
 	/* IRQs are off. */
 	movq	%rax, %rdi

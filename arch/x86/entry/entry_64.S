@@ -54,6 +54,36 @@ SYM_CODE_START(native_usergs_sysret64)
 SYM_CODE_END(native_usergs_sysret64)
 #endif /* CONFIG_PARAVIRT_XXL */
 
+#define SYS_SYSCALL_BENCH 445
+
+.macro syscall_bench index preamble=0 epilog=0
+#ifdef CONFIG_SYSCALL_BENCH
+	cmpw	$SYS_SYSCALL_BENCH, %ax
+	jne	0f
+	.if \preamble == 1
+		stac
+		movq	%rbx, %r10
+		movq	%rcx, %r8
+	.endif
+	xorl	%eax, %eax
+	cpuid
+	movl	%edi, %ecx
+	rdpmc
+	salq	$32, %rdx
+	addq	%rdx, %rax
+	movq	%rax, (\index * 8)(%rsi)
+	xorl	%eax, %eax
+	cpuid
+	movw	$SYS_SYSCALL_BENCH, %ax
+	.if \epilog == 1
+		movq	%r8, %rcx
+		movq	%r10, %rbx
+		clac
+	.endif
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
+.endm
+
 /*
  * 64-bit SYSCALL instruction entry. Up to 6 arguments in registers.
  *
@@ -95,11 +125,18 @@ SYM_CODE_END(native_usergs_sysret64)
 SYM_CODE_START(entry_SYSCALL_64)
 	UNWIND_HINT_EMPTY
 
+	syscall_bench 0 preamble=1
+
 	swapgs
+
+	syscall_bench 1
+
 	/* tss.sp2 is scratch space. */
 	movq	%rsp, PER_CPU_VAR(cpu_tss_rw + TSS_sp2)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+
+	syscall_bench 2 epilog=1
 
 SYM_INNER_LABEL(entry_SYSCALL_64_safe_stack, SYM_L_GLOBAL)
 

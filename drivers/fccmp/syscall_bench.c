@@ -8,7 +8,7 @@
 #include <asm/msr.h>
 
 /*
- * syscall_bench - measure performance counter, write to user space and return
+ * syscall_bench - measure performance counter, write to user space, and return
  */
 SYSCALL_DEFINE2(syscall_bench, uint32_t, idx, uint64_t __user *, measurements)
 {

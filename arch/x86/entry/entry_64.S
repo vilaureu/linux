@@ -71,7 +71,7 @@ SYM_CODE_END(native_usergs_sysret64)
 	rdpmc
 	salq	$32, %rdx
 	addq	%rdx, %rax
-	movq	%rax, (\index * 8)(%rsi)
+	movq	%rax, \index*8(%rsi)
 	xorl	%eax, %eax
 	cpuid
 	movw	$SYS_SYSCALL_BENCH, %ax
@@ -160,7 +160,7 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	salq	$32, %rdx
 	addq	%rdx, %rax
 	movq	RSI(%rsp), %rsi
-	movq	%rax, (3 * 8)(%rsi)
+	movq	%rax, 3*8(%rsi)
 	xorl	%eax, %eax
 	cpuid
 	movw	$SYS_SYSCALL_BENCH, %ax
@@ -172,6 +172,23 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	movq	%rax, %rdi
 	movq	%rsp, %rsi
 	call	do_syscall_64		/* returns with IRQs disabled */
+
+#ifdef CONFIG_SYSCALL_BENCH
+	cmpw	$SYS_SYSCALL_BENCH, ORIG_RAX(%rsp)
+	jne	0f
+	stac
+	xorl	%eax, %eax
+	cpuid
+	movl	RDI(%rsp), %ecx
+	rdpmc
+	salq	$32, %rdx
+	addq	%rdx, %rax
+	movq	RSI(%rsp), %rsi
+	movq	%rax, 5*8(%rsi)
+	xorl	%eax, %eax
+	cpuid
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
 
 	/*
 	 * Try to use SYSRET instead of IRET if we're returning to
@@ -240,6 +257,23 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	cmpq	$__USER_DS, SS(%rsp)		/* SS must match SYSRET */
 	jne	swapgs_restore_regs_and_return_to_usermode
 
+#ifdef CONFIG_SYSCALL_BENCH
+	cmpw	$SYS_SYSCALL_BENCH, ORIG_RAX(%rsp)
+	jne	0f
+	movq	%rcx, %r8
+	xorl	%eax, %eax
+	cpuid
+	movl	RDI(%rsp), %ecx
+	rdpmc
+	salq	$32, %rdx
+	addq	%rdx, %rax
+	movq	%rax, 6*8(%rsi)
+	xorl	%eax, %eax
+	cpuid
+	movq	%r8, %rcx
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
+
 	/*
 	 * We win! This label is here just for ease of understanding
 	 * perf profiles. Nothing jumps here.
@@ -247,6 +281,24 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 syscall_return_via_sysret:
 	/* rcx and r11 are already restored (see code above) */
 	POP_REGS pop_rdi=0 skip_r11rcx=1
+
+#ifdef CONFIG_SYSCALL_BENCH
+	cmpw	$SYS_SYSCALL_BENCH, ORIG_RAX-RDI(%rsp)
+	jne	0f
+	movq	%rax, %r9
+	movq	%rbx, %r10
+	movq	%rcx, %r8
+	xorl	%eax, %eax
+	cpuid
+	movl	(%rsp), %ecx /* RDI */
+	rdpmc
+	salq	$32, %rdx
+	addq	%rdx, %rax
+	movq	%rax, 7*8(%rsi)
+	xorl	%eax, %eax
+	cpuid
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
 
 	/*
 	 * Now all regs are restored except RSP and RDI.
@@ -256,8 +308,11 @@ syscall_return_via_sysret:
 	movq	PER_CPU_VAR(cpu_tss_rw + TSS_sp0), %rsp
 	UNWIND_HINT_EMPTY
 
-	pushq	RSP-RDI(%rdi)	/* RSP */
-	pushq	(%rdi)		/* RDI */
+#ifdef CONFIG_SYSCALL_BENCH
+	pushq	ORIG_RAX-RDI(%rdi)	/* ORIG_RAX */
+#endif
+	pushq	RSP-RDI(%rdi)		/* RSP */
+	pushq	(%rdi)			/* RDI */
 
 	/*
 	 * We are on the trampoline stack.  All regs except RDI are live.
@@ -267,9 +322,49 @@ syscall_return_via_sysret:
 
 	SWITCH_TO_USER_CR3_STACK scratch_reg=%rdi
 
+#ifdef CONFIG_SYSCALL_BENCH
+	cmpw	$SYS_SYSCALL_BENCH, 2*8(%rsp)
+	jne	0f
+	xorl	%eax, %eax
+	cpuid
+	movl	(%rsp), %ecx
+	rdpmc
+	salq	$32, %rdx
+	addq	%rdx, %rax
+	movq	%rax, 8*8(%rsi)
+	xorl	%eax, %eax
+	cpuid
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
+
 	popq	%rdi
+
+#ifdef CONFIG_SYSCALL_BENCH
+	swapgs
+
+	cmpw	$SYS_SYSCALL_BENCH, 8(%rsp)
+	jne	0f
+	xorl	%eax, %eax
+	cpuid
+	movl	%edi, %ecx
+	rdpmc
+	salq	$32, %rdx
+	addq	%rdx, %rax
+	movq	%rax, 9*8(%rsi)
+	xorl	%eax, %eax
+	cpuid
+	movq	%r10, %rbx
+	movq	%r8, %rcx
+	movq	%r9, %rax
+	clac
+0:
+
+	popq	%rsp
+	sysretq
+#else  /* !CONFIG_SYSCALL_BENCH */
 	popq	%rsp
 	USERGS_SYSRET64
+#endif /* !CONFIG_SYSCALL_BENCH */
 SYM_CODE_END(entry_SYSCALL_64)
 
 /*

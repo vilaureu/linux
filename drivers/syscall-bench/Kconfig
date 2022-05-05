@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0
 
 config SYSCALL_BENCH
-	bool "measure the latency of steps in the system call execution"
+	bool "Measure the latency of steps in the system call execution"
 	default y
-	depends on X86_64
+	depends on X86_64 && !PARAVIRT_XXL
 	help
 	  This adds a new system call, which takes latency measurements during
 	  invocation and exposes them to the user.

@@ -61,7 +61,7 @@ SYM_CODE_END(native_usergs_sysret64)
 	cmpw	$SYS_SYSCALL_BENCH, %ax
 	jne	0f
 	.if \preamble == 1
-		stac
+		ASM_STAC
 		movq	%rbx, %r10
 		movq	%rcx, %r8
 	.endif
@@ -164,7 +164,7 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	xorl	%eax, %eax
 	cpuid
 	movw	$SYS_SYSCALL_BENCH, %ax
-	clac
+	ASM_CLAC
 0:
 #endif /* CONFIG_SYSCALL_BENCH */
 
@@ -176,7 +176,7 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 #ifdef CONFIG_SYSCALL_BENCH
 	cmpw	$SYS_SYSCALL_BENCH, ORIG_RAX(%rsp)
 	jne	0f
-	stac
+	ASM_STAC
 	xorl	%eax, %eax
 	cpuid
 	movl	RDI(%rsp), %ecx
@@ -356,7 +356,7 @@ syscall_return_via_sysret:
 	movq	%r10, %rbx
 	movq	%r8, %rcx
 	movq	%r9, %rax
-	clac
+	ASM_CLAC
 0:
 
 	popq	%rsp

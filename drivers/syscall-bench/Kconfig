@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 
+menu "System call benchmark"
+
 config SYSCALL_BENCH
 	bool "Measure the latency of steps in the system call execution"
 	default y
@@ -9,3 +11,13 @@ config SYSCALL_BENCH
 	  invocation and exposes them to the user.
 	  WARNING: This compromises kernel security and adds latency to all
 	  system calls.
+
+config SYSCALL_BENCH_SERIAL
+	bool "Surround cycle measurements with serializing instructions"
+	default y
+	depends on SYSCALL_BENCH
+	help
+	  Without these serializing instructions, cycle counts might not be
+	  measured at the position declared in the code.
+
+endmenu

@@ -56,6 +56,13 @@ SYM_CODE_END(native_usergs_sysret64)
 
 #define SYS_SYSCALL_BENCH 445
 
+.macro BENCH_CPUID
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	xorl	%eax, %eax
+	cpuid
+#endif
+.endm
+
 .macro syscall_bench index preamble=0 epilog=0
 #ifdef CONFIG_SYSCALL_BENCH
 	cmpw	$SYS_SYSCALL_BENCH, %ax
@@ -65,15 +72,13 @@ SYM_CODE_END(native_usergs_sysret64)
 		movq	%rbx, %r10
 		movq	%rcx, %r8
 	.endif
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movl	%edi, %ecx
 	rdpmc
 	salq	$32, %rdx
 	addq	%rdx, %rax
 	movq	%rax, \index*8(%rsi)
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movw	$SYS_SYSCALL_BENCH, %ax
 	.if \epilog == 1
 		movq	%r8, %rcx
@@ -153,16 +158,14 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 #ifdef CONFIG_SYSCALL_BENCH
 	cmpw	$SYS_SYSCALL_BENCH, %ax
 	jne	0f
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movl	RDI(%rsp), %ecx
 	rdpmc
 	salq	$32, %rdx
 	addq	%rdx, %rax
 	movq	RSI(%rsp), %rsi
 	movq	%rax, 3*8(%rsi)
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movw	$SYS_SYSCALL_BENCH, %ax
 	ASM_CLAC
 0:
@@ -177,16 +180,14 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	cmpw	$SYS_SYSCALL_BENCH, ORIG_RAX(%rsp)
 	jne	0f
 	ASM_STAC
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movl	RDI(%rsp), %ecx
 	rdpmc
 	salq	$32, %rdx
 	addq	%rdx, %rax
 	movq	RSI(%rsp), %rsi
 	movq	%rax, 5*8(%rsi)
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 0:
 #endif /* CONFIG_SYSCALL_BENCH */
 
@@ -261,15 +262,13 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	cmpw	$SYS_SYSCALL_BENCH, ORIG_RAX(%rsp)
 	jne	0f
 	movq	%rcx, %r8
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movl	RDI(%rsp), %ecx
 	rdpmc
 	salq	$32, %rdx
 	addq	%rdx, %rax
 	movq	%rax, 6*8(%rsi)
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movq	%r8, %rcx
 0:
 #endif /* CONFIG_SYSCALL_BENCH */
@@ -288,15 +287,13 @@ syscall_return_via_sysret:
 	movq	%rax, %r9
 	movq	%rbx, %r10
 	movq	%rcx, %r8
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movl	(%rsp), %ecx /* RDI */
 	rdpmc
 	salq	$32, %rdx
 	addq	%rdx, %rax
 	movq	%rax, 7*8(%rsi)
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 0:
 #endif /* CONFIG_SYSCALL_BENCH */
 
@@ -325,15 +322,13 @@ syscall_return_via_sysret:
 #ifdef CONFIG_SYSCALL_BENCH
 	cmpw	$SYS_SYSCALL_BENCH, 2*8(%rsp)
 	jne	0f
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movl	(%rsp), %ecx
 	rdpmc
 	salq	$32, %rdx
 	addq	%rdx, %rax
 	movq	%rax, 8*8(%rsi)
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 0:
 #endif /* CONFIG_SYSCALL_BENCH */
 
@@ -344,15 +339,13 @@ syscall_return_via_sysret:
 
 	cmpw	$SYS_SYSCALL_BENCH, 8(%rsp)
 	jne	0f
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movl	%edi, %ecx
 	rdpmc
 	salq	$32, %rdx
 	addq	%rdx, %rax
 	movq	%rax, 9*8(%rsi)
-	xorl	%eax, %eax
-	cpuid
+	BENCH_CPUID
 	movq	%r10, %rbx
 	movq	%r8, %rcx
 	movq	%r9, %rax

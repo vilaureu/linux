@@ -79,7 +79,7 @@ SYM_CODE_END(native_usergs_sysret64)
 	addq	%rdx, %rax
 	movq	%rax, \index*8(%rsi)
 	BENCH_CPUID
-	movw	$SYS_SYSCALL_BENCH, %ax
+	movl	$SYS_SYSCALL_BENCH, %eax
 	.if \epilog == 1
 		movq	%r8, %rcx
 		movq	%r10, %rbx
@@ -166,7 +166,7 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	movq	RSI(%rsp), %rsi
 	movq	%rax, 3*8(%rsi)
 	BENCH_CPUID
-	movw	$SYS_SYSCALL_BENCH, %ax
+	movl	$SYS_SYSCALL_BENCH, %eax
 	ASM_CLAC
 0:
 #endif /* CONFIG_SYSCALL_BENCH */

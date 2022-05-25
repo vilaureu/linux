@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * syscall_bench.c - measure the latency of steps in the system call execution
+ * x86.c - measure the latency of steps in the system call execution on x86-64
  */
 
 #include <linux/uaccess.h>

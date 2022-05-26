@@ -5,7 +5,7 @@ menu "System call benchmark"
 config SYSCALL_BENCH
 	bool "Measure the latency of steps in the system call execution"
 	default y
-	depends on X86_64 && !PARAVIRT_XXL
+	depends on X86_64 && !PARAVIRT_XXL || ARM64 && ARM_PMU
 	help
 	  This adds a new system call, which takes latency measurements during
 	  invocation and exposes them to the user.
@@ -15,7 +15,7 @@ config SYSCALL_BENCH
 config SYSCALL_BENCH_SERIAL
 	bool "Surround cycle measurements with serializing instructions"
 	default y
-	depends on SYSCALL_BENCH
+	depends on SYSCALL_BENCH && X86_64
 	help
 	  Without these serializing instructions, cycle counts might not be
 	  measured at the position declared in the code.

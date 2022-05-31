@@ -29,6 +29,8 @@
 #include <asm/asm-uaccess.h>
 #include <asm/unistd.h>
 
+#define SYS_SYSCALL_BENCH 445
+
 /*
  * Context tracking and irqflag tracing need to instrument transitions between
  * user and kernel mode.
@@ -835,11 +837,19 @@ alternative_else_nop_endif
 	 */
 	.endm
 
-	.macro tramp_ventry, regsize = 64
+	.macro tramp_ventry, regsize = 64, bench = 0
 	.align	7
 1:
 	.if	\regsize == 64
 	msr	tpidrro_el0, x30	// Restored in kernel_ventry
+#ifdef CONFIG_SYSCALL_BENCH
+	.if	\bench
+	// Check for the correct system call number.
+	cmp	w8, #SYS_SYSCALL_BENCH
+	b.eq	svc_bench
+svc_bench_ret:
+	.endif
+#endif
 	.endif
 	/*
 	 * Defend against branch aliasing attacks by pushing a dummy
@@ -881,7 +891,7 @@ alternative_else_nop_endif
 SYM_CODE_START_NOALIGN(tramp_vectors)
 	.space	0x400
 
-	tramp_ventry
+	tramp_ventry	bench=1
 	tramp_ventry
 	tramp_ventry
 	tramp_ventry
@@ -899,6 +909,30 @@ SYM_CODE_END(tramp_exit_native)
 SYM_CODE_START(tramp_exit_compat)
 	tramp_exit	32
 SYM_CODE_END(tramp_exit_compat)
+
+#ifdef CONFIG_SYSCALL_BENCH
+/*
+ * Implement this benchmark code outside of the vector, because an entry is too
+ * small to fit the code.
+ */
+SYM_CODE_START_LOCAL(svc_bench)
+	// Check that this is a system call.
+	mrs	x30, esr_el1
+	and	w30, w30, #ESR_ELx_EC_MASK
+	lsr	w30, w30, #ESR_ELx_EC_SHIFT
+	cmp	w30, #ESR_ELx_EC_SVC64
+	b.ne	svc_bench_ret
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	mrs	x30, pmccntr_el0
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	str	x30, [x0]
+	b	svc_bench_ret
+SYM_CODE_END(svc_bench)
+#endif
 
 	.ltorg
 	.popsection				// .entry.tramp.text

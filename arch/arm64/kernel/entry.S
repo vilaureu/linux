@@ -28,8 +28,7 @@
 #include <asm/thread_info.h>
 #include <asm/asm-uaccess.h>
 #include <asm/unistd.h>
-
-#define SYS_SYSCALL_BENCH 445
+#include <asm/syscall_bench.h>
 
 #ifdef CONFIG_SYSCALL_BENCH
 	.macro bench_branch name

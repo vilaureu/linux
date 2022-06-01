@@ -16,6 +16,7 @@
 #include <asm/kprobes.h>
 #include <asm/mmu.h>
 #include <asm/sysreg.h>
+#include <asm/syscall_bench.h>
 
 /*
  * This is intended to match the logic in irqentry_enter(), handling the kernel
@@ -378,6 +379,10 @@ asmlinkage void noinstr el0_sync_handler(struct pt_regs *regs)
 
 	switch (ESR_ELx_EC(esr)) {
 	case ESR_ELx_EC_SVC64:
+#ifdef CONFIG_SYSCALL_BENCH
+		if (regs->regs[8] == SYS_SYSCALL_BENCH)
+			syscall_benchmark(&((u64 *)regs->regs[0])[3]);
+#endif
 		el0_svc(regs);
 		break;
 	case ESR_ELx_EC_DABT_LOW:

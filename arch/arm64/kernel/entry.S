@@ -31,6 +31,41 @@
 
 #define SYS_SYSCALL_BENCH 445
 
+#ifdef CONFIG_SYSCALL_BENCH
+	.macro bench_branch name
+	// Check for the correct system call number.
+	cmp	w8, #SYS_SYSCALL_BENCH
+	b.eq	\name\()_bench
+\name\()_bench_ret:
+	.endm
+
+	.macro bench_code name index
+/*
+ * Implement this benchmark code outside of the vector, because an entry is too
+ * small to fit the code.
+ */
+SYM_CODE_START_LOCAL(\name\()_bench)
+	// Check that this is a system call.
+	mrs	x8, esr_el1
+	and	w8, w8, #ESR_ELx_EC_MASK
+	lsr	w8, w8, #ESR_ELx_EC_SHIFT
+	cmp	w8, #ESR_ELx_EC_SVC64
+	b.ne	\name\()_bench_ret
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	mrs	x8, pmccntr_el0
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	str	x8, [x0, #(\index * 8)]
+	mov	x8, #SYS_SYSCALL_BENCH
+	b	\name\()_bench_ret
+SYM_CODE_END(\name\()_bench)
+	.endm
+#endif
+
+
 /*
  * Context tracking and irqflag tracing need to instrument transitions between
  * user and kernel mode.
@@ -62,8 +97,16 @@
 #define BAD_FIQ		2
 #define BAD_ERROR	3
 
+bench_code ventry 1
+
 	.macro kernel_ventry, el, label, regsize = 64
 	.align 7
+#ifdef CONFIG_SYSCALL_BENCH
+	.if	\el == 0 && \label == sync && \regsize == 64
+	bench_branch ventry
+	.endif
+#endif
+
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	.if	\el == 0
 alternative_if ARM64_UNMAP_KERNEL_AT_EL0
@@ -844,10 +887,7 @@ alternative_else_nop_endif
 	msr	tpidrro_el0, x30	// Restored in kernel_ventry
 #ifdef CONFIG_SYSCALL_BENCH
 	.if	\bench
-	// Check for the correct system call number.
-	cmp	w8, #SYS_SYSCALL_BENCH
-	b.eq	svc_bench
-svc_bench_ret:
+	bench_branch tramp_ventry
 	.endif
 #endif
 	.endif
@@ -911,27 +951,7 @@ SYM_CODE_START(tramp_exit_compat)
 SYM_CODE_END(tramp_exit_compat)
 
 #ifdef CONFIG_SYSCALL_BENCH
-/*
- * Implement this benchmark code outside of the vector, because an entry is too
- * small to fit the code.
- */
-SYM_CODE_START_LOCAL(svc_bench)
-	// Check that this is a system call.
-	mrs	x30, esr_el1
-	and	w30, w30, #ESR_ELx_EC_MASK
-	lsr	w30, w30, #ESR_ELx_EC_SHIFT
-	cmp	w30, #ESR_ELx_EC_SVC64
-	b.ne	svc_bench_ret
-#ifdef CONFIG_SYSCALL_BENCH_SERIAL
-	isb
-#endif
-	mrs	x30, pmccntr_el0
-#ifdef CONFIG_SYSCALL_BENCH_SERIAL
-	isb
-#endif
-	str	x30, [x0]
-	b	svc_bench_ret
-SYM_CODE_END(svc_bench)
+	bench_code tramp_ventry 0
 #endif
 
 	.ltorg

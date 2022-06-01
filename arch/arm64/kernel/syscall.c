@@ -14,6 +14,7 @@
 #include <asm/syscall.h>
 #include <asm/thread_info.h>
 #include <asm/unistd.h>
+#include <asm/syscall_bench.h>
 
 long compat_arm_syscall(struct pt_regs *regs, int scno);
 long sys_ni_syscall(void);
@@ -101,6 +102,11 @@ static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 
 	regs->orig_x0 = regs->regs[0];
 	regs->syscallno = scno;
+
+#ifdef CONFIG_SYSCALL_BENCH
+	if (regs->syscallno == SYS_SYSCALL_BENCH)
+		syscall_benchmark(&((u64 *)regs->orig_x0)[4]);
+#endif
 
 	/*
 	 * BTI note:

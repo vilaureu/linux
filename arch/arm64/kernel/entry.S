@@ -739,6 +739,25 @@ SYM_CODE_END(el1_irq)
  */
 	.align	6
 SYM_CODE_START_LOCAL_NOALIGN(el0_sync)
+#ifdef CONFIG_SYSCALL_BENCH
+	cmp	w8, #SYS_SYSCALL_BENCH
+	b.ne	0f
+	mrs	x8, esr_el1
+	and	w8, w8, #ESR_ELx_EC_MASK
+	lsr	w8, w8, #ESR_ELx_EC_SHIFT
+	cmp	w8, #ESR_ELx_EC_SVC64
+	b.ne	0f
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	mrs	x8, pmccntr_el0
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	str	x8, [x0, #(2 * 8)]
+	mov	x8, #SYS_SYSCALL_BENCH
+0:
+#endif
 	kernel_entry 0
 	mov	x0, sp
 	bl	el0_sync_handler

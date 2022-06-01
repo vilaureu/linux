@@ -4,11 +4,13 @@
  */
 
 #include <asm/sysreg.h>
+#include <asm/syscall_bench.h>
 
 #include <linux/init.h>
 #include <linux/printk.h>
 #include <linux/perf_event.h>
 #include <linux/smp.h>
+#include <linux/syscalls.h>
 
 /* setup_sysregs - configure cycle counter for user reads */
 static void setup_sysregs(void *info)
@@ -54,3 +56,11 @@ static int __init syscall_bench_init(void)
 
 // Must be executed after armv8_pmu_driver_init.
 late_initcall(syscall_bench_init);
+
+/*
+ * syscall_bench - measure performance counter, write to user space, and return
+ */
+SYSCALL_DEFINE1(syscall_bench, uint64_t __user *, measurements)
+{
+	return syscall_benchmark(&measurements[5]);
+}

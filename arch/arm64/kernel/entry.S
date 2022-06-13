@@ -31,6 +31,16 @@
 #include <asm/syscall_bench.h>
 
 #ifdef CONFIG_SYSCALL_BENCH
+	.macro benchmark reg
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	mrs	\reg, pmccntr_el0
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	.endm
+
 	.macro bench_branch name
 	// Check for the correct system call number.
 	cmp	w8, #SYS_SYSCALL_BENCH
@@ -50,13 +60,7 @@ SYM_CODE_START_LOCAL(\name\()_bench)
 	lsr	w8, w8, #ESR_ELx_EC_SHIFT
 	cmp	w8, #ESR_ELx_EC_SVC64
 	b.ne	\name\()_bench_ret
-#ifdef CONFIG_SYSCALL_BENCH_SERIAL
-	isb
-#endif
-	mrs	x8, pmccntr_el0
-#ifdef CONFIG_SYSCALL_BENCH_SERIAL
-	isb
-#endif
+	benchmark x8
 	str	x8, [x0, #(\index * 8)]
 	mov	x8, #SYS_SYSCALL_BENCH
 	b	\name\()_bench_ret
@@ -746,13 +750,7 @@ SYM_CODE_START_LOCAL_NOALIGN(el0_sync)
 	lsr	w8, w8, #ESR_ELx_EC_SHIFT
 	cmp	w8, #ESR_ELx_EC_SVC64
 	b.ne	0f
-#ifdef CONFIG_SYSCALL_BENCH_SERIAL
-	isb
-#endif
-	mrs	x8, pmccntr_el0
-#ifdef CONFIG_SYSCALL_BENCH_SERIAL
-	isb
-#endif
+	benchmark x8
 	str	x8, [x0, #(2 * 8)]
 	mov	x8, #SYS_SYSCALL_BENCH
 0:
@@ -887,13 +885,7 @@ finish_ret_to_user_bench:
 #ifdef CONFIG_GCC_PLUGIN_STACKLEAK
 	bl	stackleak_erase
 #endif
-#ifdef CONFIG_SYSCALL_BENCH_SERIAL
-	isb
-#endif
-	mrs	x0, pmccntr_el0
-#ifdef CONFIG_SYSCALL_BENCH_SERIAL
-	isb
-#endif
+	benchmark x0
 	ldr	x1, [sp, #S_ORIG_X0]
 	str	x0, [x1, #(7 * 8)]
 	kernel_exit 0

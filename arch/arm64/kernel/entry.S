@@ -357,7 +357,7 @@ alternative_else_nop_endif
 	*/
 	.endm
 
-	.macro	kernel_exit, el
+	.macro	kernel_exit, el, bench = 0
 	.if	\el != 0
 	disable_daif
 	.endif
@@ -425,6 +425,13 @@ alternative_else_nop_endif
 	ldp	x26, x27, [sp, #16 * 13]
 	ldp	x28, x29, [sp, #16 * 14]
 	ldr	lr, [sp, #S_LR]
+
+	.if	\bench == 1
+	benchmark x2
+	ldr	x1, [sp, #S_ORIG_X0]
+	str	x2, [x1, #(8 * 8)]
+	.endif
+
 	add	sp, sp, #PT_REGS_SIZE		// restore sp
 
 	.if	\el == 0
@@ -888,7 +895,7 @@ finish_ret_to_user_bench:
 	benchmark x0
 	ldr	x1, [sp, #S_ORIG_X0]
 	str	x0, [x1, #(7 * 8)]
-	kernel_exit 0
+	kernel_exit 0 bench=1
 
 /*
  * Ok, we need to do extra processing, enter the slow path.

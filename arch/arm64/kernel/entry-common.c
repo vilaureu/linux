@@ -384,7 +384,11 @@ asmlinkage void noinstr el0_sync_handler(struct pt_regs *regs)
 			syscall_benchmark(&((u64 *)regs->regs[0])[3]);
 #endif
 		el0_svc(regs);
+#ifdef CONFIG_SYSCALL_BENCH
+		if (regs->syscallno == SYS_SYSCALL_BENCH)
+			syscall_benchmark(&((u64 *)regs->orig_x0)[6]);
 		break;
+#endif
 	case ESR_ELx_EC_DABT_LOW:
 		el0_da(regs, esr);
 		break;

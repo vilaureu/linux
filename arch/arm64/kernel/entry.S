@@ -756,10 +756,17 @@ SYM_CODE_START_LOCAL_NOALIGN(el0_sync)
 	str	x8, [x0, #(2 * 8)]
 	mov	x8, #SYS_SYSCALL_BENCH
 0:
-#endif
+#endif /* CONFIG_SYSCALL_BENCH */
 	kernel_entry 0
 	mov	x0, sp
 	bl	el0_sync_handler
+#ifdef CONFIG_SYSCALL_BENCH
+	ldr	x0, [sp, #S_SYSCALLNO]
+	cmp	w0, #SYS_SYSCALL_BENCH
+	b.ne	0f
+	b	ret_to_user_bench
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
 	b	ret_to_user
 SYM_CODE_END(el0_sync)
 
@@ -858,6 +865,50 @@ work_pending:
 SYM_CODE_END(ret_to_user)
 
 	.popsection				// .entry.text
+
+#ifdef CONFIG_SYSCALL_BENCH
+/*
+ * Benchmarked syscall return path.
+ */
+SYM_CODE_START_LOCAL(ret_to_user_bench)
+	disable_daif
+	gic_prio_kentry_setup tmp=x3
+#ifdef CONFIG_TRACE_IRQFLAGS
+	bl	trace_hardirqs_off
+#endif
+	ldr	x19, [tsk, #TSK_TI_FLAGS]
+	and	x2, x19, #_TIF_WORK_MASK
+	cbnz	x2, work_pending_bench
+finish_ret_to_user_bench:
+	user_enter_irqoff
+	/* Ignore asynchronous tag check faults in the uaccess routines */
+	clear_mte_async_tcf
+	enable_step_tsk x19, x2
+#ifdef CONFIG_GCC_PLUGIN_STACKLEAK
+	bl	stackleak_erase
+#endif
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	mrs	x0, pmccntr_el0
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	ldr	x1, [sp, #S_ORIG_X0]
+	str	x0, [x1, #(7 * 8)]
+	kernel_exit 0
+
+/*
+ * Ok, we need to do extra processing, enter the slow path.
+ */
+work_pending_bench:
+	mov	x0, sp				// 'regs'
+	mov	x1, x19
+	bl	do_notify_resume
+	ldr	x19, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
+	b	finish_ret_to_user_bench
+SYM_CODE_END(ret_to_user_bench)
+#endif /* CONFIG_SYSCALL_BENCH */
 
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 /*

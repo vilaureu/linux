@@ -439,7 +439,11 @@ alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	bne	4f
 	msr	far_el1, x30
+	.if \bench == 1
+	tramp_alias	x30, tramp_exit_bench
+	.else
 	tramp_alias	x30, tramp_exit_native
+	.endif
 	br	x30
 4:
 	tramp_alias	x30, tramp_exit_compat
@@ -984,12 +988,16 @@ alternative_else_nop_endif
 	ret
 	.endm
 
-	.macro tramp_exit, regsize = 64
+	.macro tramp_exit, regsize = 64, bench = 0
 	adr	x30, tramp_vectors
 	msr	vbar_el1, x30
 	tramp_unmap_kernel	x30
 	.if	\regsize == 64
 	mrs	x30, far_el1
+	.endif
+	.if \bench == 1
+	benchmark x2
+	str	x2, [x1, #(9 * 8)]
 	.endif
 	eret
 	sb
@@ -1013,6 +1021,10 @@ SYM_CODE_END(tramp_vectors)
 SYM_CODE_START(tramp_exit_native)
 	tramp_exit
 SYM_CODE_END(tramp_exit_native)
+
+SYM_CODE_START(tramp_exit_bench)
+	tramp_exit bench=1
+SYM_CODE_END(tramp_exit_bench)
 
 SYM_CODE_START(tramp_exit_compat)
 	tramp_exit	32

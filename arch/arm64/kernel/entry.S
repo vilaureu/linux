@@ -28,6 +28,46 @@
 #include <asm/thread_info.h>
 #include <asm/asm-uaccess.h>
 #include <asm/unistd.h>
+#include <asm/syscall_bench.h>
+
+#ifdef CONFIG_SYSCALL_BENCH
+	.macro benchmark reg
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	mrs	\reg, pmccntr_el0
+#ifdef CONFIG_SYSCALL_BENCH_SERIAL
+	isb
+#endif
+	.endm
+
+	.macro bench_branch name
+	// Check for the correct system call number.
+	cmp	w8, #SYS_SYSCALL_BENCH
+	b.eq	\name\()_bench
+\name\()_bench_ret:
+	.endm
+
+	.macro bench_code name index
+/*
+ * Implement this benchmark code outside of the vector, because an entry is too
+ * small to fit the code.
+ */
+SYM_CODE_START_LOCAL(\name\()_bench)
+	// Check that this is a system call.
+	mrs	x8, esr_el1
+	and	w8, w8, #ESR_ELx_EC_MASK
+	lsr	w8, w8, #ESR_ELx_EC_SHIFT
+	cmp	w8, #ESR_ELx_EC_SVC64
+	b.ne	\name\()_bench_ret
+	benchmark x8
+	str	x8, [x0, #(\index * 8)]
+	mov	x8, #SYS_SYSCALL_BENCH
+	b	\name\()_bench_ret
+SYM_CODE_END(\name\()_bench)
+	.endm
+#endif
+
 
 /*
  * Context tracking and irqflag tracing need to instrument transitions between
@@ -60,8 +100,16 @@
 #define BAD_FIQ		2
 #define BAD_ERROR	3
 
+bench_code ventry 1
+
 	.macro kernel_ventry, el, label, regsize = 64
 	.align 7
+#ifdef CONFIG_SYSCALL_BENCH
+	.if	\el == 0 && \label == sync && \regsize == 64
+	bench_branch ventry
+	.endif
+#endif
+
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	.if	\el == 0
 alternative_if ARM64_UNMAP_KERNEL_AT_EL0
@@ -309,7 +357,7 @@ alternative_else_nop_endif
 	*/
 	.endm
 
-	.macro	kernel_exit, el
+	.macro	kernel_exit, el, bench = 0
 	.if	\el != 0
 	disable_daif
 	.endif
@@ -377,6 +425,13 @@ alternative_else_nop_endif
 	ldp	x26, x27, [sp, #16 * 13]
 	ldp	x28, x29, [sp, #16 * 14]
 	ldr	lr, [sp, #S_LR]
+
+	.if	\bench == 1
+	benchmark x2
+	ldr	x1, [sp, #S_ORIG_X0]
+	str	x2, [x1, #(8 * 8)]
+	.endif
+
 	add	sp, sp, #PT_REGS_SIZE		// restore sp
 
 	.if	\el == 0
@@ -384,7 +439,11 @@ alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	bne	4f
 	msr	far_el1, x30
+	.if \bench == 1
+	tramp_alias	x30, tramp_exit_bench
+	.else
 	tramp_alias	x30, tramp_exit_native
+	.endif
 	br	x30
 4:
 	tramp_alias	x30, tramp_exit_compat
@@ -694,9 +753,29 @@ SYM_CODE_END(el1_irq)
  */
 	.align	6
 SYM_CODE_START_LOCAL_NOALIGN(el0_sync)
+#ifdef CONFIG_SYSCALL_BENCH
+	cmp	w8, #SYS_SYSCALL_BENCH
+	b.ne	0f
+	mrs	x8, esr_el1
+	and	w8, w8, #ESR_ELx_EC_MASK
+	lsr	w8, w8, #ESR_ELx_EC_SHIFT
+	cmp	w8, #ESR_ELx_EC_SVC64
+	b.ne	0f
+	benchmark x8
+	str	x8, [x0, #(2 * 8)]
+	mov	x8, #SYS_SYSCALL_BENCH
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
 	kernel_entry 0
 	mov	x0, sp
 	bl	el0_sync_handler
+#ifdef CONFIG_SYSCALL_BENCH
+	ldr	x0, [sp, #S_SYSCALLNO]
+	cmp	w0, #SYS_SYSCALL_BENCH
+	b.ne	0f
+	b	ret_to_user_bench
+0:
+#endif /* CONFIG_SYSCALL_BENCH */
 	b	ret_to_user
 SYM_CODE_END(el0_sync)
 
@@ -796,6 +875,44 @@ SYM_CODE_END(ret_to_user)
 
 	.popsection				// .entry.text
 
+#ifdef CONFIG_SYSCALL_BENCH
+/*
+ * Benchmarked syscall return path.
+ */
+SYM_CODE_START_LOCAL(ret_to_user_bench)
+	disable_daif
+	gic_prio_kentry_setup tmp=x3
+#ifdef CONFIG_TRACE_IRQFLAGS
+	bl	trace_hardirqs_off
+#endif
+	ldr	x19, [tsk, #TSK_TI_FLAGS]
+	and	x2, x19, #_TIF_WORK_MASK
+	cbnz	x2, work_pending_bench
+finish_ret_to_user_bench:
+	user_enter_irqoff
+	/* Ignore asynchronous tag check faults in the uaccess routines */
+	clear_mte_async_tcf
+	enable_step_tsk x19, x2
+#ifdef CONFIG_GCC_PLUGIN_STACKLEAK
+	bl	stackleak_erase
+#endif
+	benchmark x0
+	ldr	x1, [sp, #S_ORIG_X0]
+	str	x0, [x1, #(7 * 8)]
+	kernel_exit 0 bench=1
+
+/*
+ * Ok, we need to do extra processing, enter the slow path.
+ */
+work_pending_bench:
+	mov	x0, sp				// 'regs'
+	mov	x1, x19
+	bl	do_notify_resume
+	ldr	x19, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
+	b	finish_ret_to_user_bench
+SYM_CODE_END(ret_to_user_bench)
+#endif /* CONFIG_SYSCALL_BENCH */
+
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 /*
  * Exception vectors trampoline.
@@ -835,11 +952,16 @@ alternative_else_nop_endif
 	 */
 	.endm
 
-	.macro tramp_ventry, regsize = 64
+	.macro tramp_ventry, regsize = 64, bench = 0
 	.align	7
 1:
 	.if	\regsize == 64
 	msr	tpidrro_el0, x30	// Restored in kernel_ventry
+#ifdef CONFIG_SYSCALL_BENCH
+	.if	\bench
+	bench_branch tramp_ventry
+	.endif
+#endif
 	.endif
 	/*
 	 * Defend against branch aliasing attacks by pushing a dummy
@@ -866,12 +988,16 @@ alternative_else_nop_endif
 	ret
 	.endm
 
-	.macro tramp_exit, regsize = 64
+	.macro tramp_exit, regsize = 64, bench = 0
 	adr	x30, tramp_vectors
 	msr	vbar_el1, x30
 	tramp_unmap_kernel	x30
 	.if	\regsize == 64
 	mrs	x30, far_el1
+	.endif
+	.if \bench == 1
+	benchmark x2
+	str	x2, [x1, #(9 * 8)]
 	.endif
 	eret
 	sb
@@ -881,7 +1007,7 @@ alternative_else_nop_endif
 SYM_CODE_START_NOALIGN(tramp_vectors)
 	.space	0x400
 
-	tramp_ventry
+	tramp_ventry	bench=1
 	tramp_ventry
 	tramp_ventry
 	tramp_ventry
@@ -896,9 +1022,17 @@ SYM_CODE_START(tramp_exit_native)
 	tramp_exit
 SYM_CODE_END(tramp_exit_native)
 
+SYM_CODE_START(tramp_exit_bench)
+	tramp_exit bench=1
+SYM_CODE_END(tramp_exit_bench)
+
 SYM_CODE_START(tramp_exit_compat)
 	tramp_exit	32
 SYM_CODE_END(tramp_exit_compat)
+
+#ifdef CONFIG_SYSCALL_BENCH
+	bench_code tramp_ventry 0
+#endif
 
 	.ltorg
 	.popsection				// .entry.tramp.text

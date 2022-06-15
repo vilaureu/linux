@@ -189,7 +189,7 @@ COND_SYSCALL(getgroups);
 
 /* kernel/timer.c */
 
-/* drivers/syscall-bench/syscall_bench.c */
+/* drivers/syscall-bench/x86.c */
 COND_SYSCALL(syscall_bench);
 
 /* ipc/mqueue.c */
